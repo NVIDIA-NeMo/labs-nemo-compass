@@ -90,3 +90,20 @@ For each wheel, it submits SHA-1 and SHA-256 checksums, verifies the downloaded 
 the direct URL to register with nSpect. Matching existing artifacts are reused; different bytes
 require a version bump. It rejects environment files and non-NVIDIA upload endpoints and disables
 trusted/public publishing.
+
+## Ethos skill
+
+The portable [ethos skill](.agents/skills/ethos/SKILL.md) combines repository
+exploration, intent questions, and local `ETHOS.md` authoring in one file,
+including the schema-v1 outline. It can be copied into a coding assistant's
+skills directory without installing Trace Analyst or NeMo Platform. Eval Author
+can use the same skill to establish the intended behavior behind an evaluation.
+
+The skill is adapted from NeMo Platform's `nemo-explore` and `nemo-ethos` skills
+and `nemo-ethos/references/templates/ethos.md` at commit
+`08128e6d0e1248928d4d4152a39bc06360ca74b1` (September 18, 2026), under
+`packages/nemo_platform_ext/src/nemo_platform_ext/skills/`. The source files
+remain unchanged. This copy combines their exploration and writing workflows,
+retains the fifteen-section schema, and removes platform setup, model selection,
+Filesets uploads, and build handoffs. Existing answers and scoped edits do not
+require repeating an interview.
