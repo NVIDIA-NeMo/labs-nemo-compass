@@ -27,8 +27,10 @@ from typing import Any
 
 import yaml
 from nooa.unifiedllm import CompletionClient, UnifiedLLM
+from pydantic import ValidationError
 from pydantic_settings import CliSettingsSource
 from rich.console import Console
+from trace_ingest.loaders.custom import CustomTraceLoader, CustomTraceLoadError
 from trace_ingest.loaders.gym import GymTraceLoader
 
 from insight_agent.cli.output import RunOutput, RunResult, display_name
@@ -131,6 +133,8 @@ def _check_environment(config: RunConfig) -> str:
 def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
     """Construct the trace loader selected by the run configuration."""
 
+    if config.custom is not None:
+        return CustomTraceLoader(config.custom)
     if config.filesystem is not None:
         return FSDataLoader(config.filesystem.path)
     if config.gym is not None:
@@ -391,7 +395,7 @@ def get_config(argv: Sequence[str] | None = None) -> RunConfig:
 # Pydantic hooks accept parser/group objects and argparse's heterogeneous keyword arguments.
 def _add_common_argument(parser: Any, *args: str, **kwargs: Any) -> Action:  # noqa: ANN401
     if (
-        kwargs.get("dest") not in ("config", "output_path", "model")
+        kwargs.get("dest") not in ("config", "output_path", "model", "validate_only")
         and kwargs.get("action") != "help"
     ):
         kwargs["help"] = SUPPRESS
@@ -423,6 +427,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = RunOutput(Console(stderr=True, markup=False, highlight=False))
     try:
         config = get_config(argv)
+        if config.validate_only:
+            load_dotenv()
+            loader = _configured_trace_loader(config.trace)
+            try:
+                snapshot = loader.load()
+            except (ValueError, OSError) as error:
+                raise SetupError(f"Trace validation failed: {error}") from error
+            output.console.print(
+                f"Validated {len(snapshot)} traces from {loader.describe()['source']}"
+            )
+            return EXIT_OK
         result = asyncio.run(_generate_insights(config, output))
         rendered = _render_insights(result.insights)
         if result.insights:
@@ -431,7 +446,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(rendered, end="")
         output.report(result, config.output_path)
         return EXIT_OK
-    except SetupError as error:
+    except (SetupError, CustomTraceLoadError, ValidationError) as error:
         output.console.print(str(error), soft_wrap=True)
         return EXIT_SETUP
 

@@ -29,3 +29,8 @@ For local development, use an editable checkout:
 ```bash
 uv add --editable /path/to/labs-trace-intel/packages/trace-ingest --extra mlflow
 ```
+
+External utilities can implement ingestion in any language using
+[`CustomTraceLoader`](src/trace_ingest/loaders/custom.py). See the
+[custom command guide](../../docs/sources/custom.md#run-your-utility-from-yaml)
+for arguments, output validation, and execution behavior.

@@ -13,6 +13,7 @@ from pydantic_settings import (
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
+from trace_ingest.loaders.custom import CustomTraceConfig
 from trace_ingest.loaders.gym import GymTraceConfig
 
 from insight_agent.evidence_streams.anomaly_and_patterns.stream import AnomalyAndPatternsConfig
@@ -149,6 +150,9 @@ class TraceConfig(ConfigModel):
         ge=1,
         description="Maximum complete traces loaded by a provider source",
     )
+    custom: CustomTraceConfig | None = Field(
+        default=None, description="Trusted external command exporting canonical JSONL"
+    )
     filesystem: FilesystemConfig | None = Field(
         default=None,
         description="Canonical JSONL filesystem loader",
@@ -198,6 +202,7 @@ class TraceConfig(ConfigModel):
         configured = sum(
             source is not None
             for source in (
+                self.custom,
                 self.filesystem,
                 self.atif,
                 self.gym,
@@ -213,6 +218,10 @@ class TraceConfig(ConfigModel):
         )
         if configured != 1:
             raise ValueError("trace must configure exactly one loader")
+        if self.custom is not None and self.max_traces is not None:
+            raise ValueError(
+                "Set trace limits in trace.custom.args; trace.max_traces is not supported"
+            )
         if self.filesystem is not None and self.max_traces is not None:
             raise ValueError("trace.max_traces is not supported by the filesystem loader")
         if self.gym is not None and self.max_traces is not None:
@@ -286,6 +295,9 @@ class RunConfig(BaseSettings):
         default=None,
         exclude=True,
         description="Optional YAML Analyst configuration",
+    )
+    validate_only: bool = Field(
+        default=False, description="Load and validate traces without running inference"
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
