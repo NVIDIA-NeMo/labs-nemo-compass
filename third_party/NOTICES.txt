@@ -1600,21 +1600,21 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-cryptography==49.0.0
+cryptography==50.0.1
 ================================================================================
 
-Source: https://files.pythonhosted.org/packages/1f/99/d1c90d6041656cc6ee229dc99cd67fd0cd5aec3c5f7d72fffc27cc750054/cryptography-49.0.0.tar.gz
-SHA256: sha256:f89660a348f4f78a92366240a61404e337586ef7f5909a2fef59ca88ef505493
-File: cryptography-49.0.0/LICENSE
+Source: https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz
+SHA256: sha256:5dd9bda1c12b4162f6ff568eeb5e0ff956c28d14406e875cfe8a63a2d414ff20
+File: cryptography-50.0.1/LICENSE
 
 This software is made available under the terms of *either* of the licenses
 found in LICENSE.APACHE or LICENSE.BSD. Contributions to cryptography are made
 under the terms of *both* these licenses.
 
 
-Source: https://files.pythonhosted.org/packages/1f/99/d1c90d6041656cc6ee229dc99cd67fd0cd5aec3c5f7d72fffc27cc750054/cryptography-49.0.0.tar.gz
-SHA256: sha256:f89660a348f4f78a92366240a61404e337586ef7f5909a2fef59ca88ef505493
-File: cryptography-49.0.0/LICENSE.APACHE
+Source: https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz
+SHA256: sha256:5dd9bda1c12b4162f6ff568eeb5e0ff956c28d14406e875cfe8a63a2d414ff20
+File: cryptography-50.0.1/LICENSE.APACHE
 
 
                                  Apache License
@@ -1820,9 +1820,9 @@ File: cryptography-49.0.0/LICENSE.APACHE
    limitations under the License.
 
 
-Source: https://files.pythonhosted.org/packages/1f/99/d1c90d6041656cc6ee229dc99cd67fd0cd5aec3c5f7d72fffc27cc750054/cryptography-49.0.0.tar.gz
-SHA256: sha256:f89660a348f4f78a92366240a61404e337586ef7f5909a2fef59ca88ef505493
-File: cryptography-49.0.0/LICENSE.BSD
+Source: https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz
+SHA256: sha256:5dd9bda1c12b4162f6ff568eeb5e0ff956c28d14406e875cfe8a63a2d414ff20
+File: cryptography-50.0.1/LICENSE.BSD
 
 Copyright (c) Individual contributors.
 All rights reserved.
