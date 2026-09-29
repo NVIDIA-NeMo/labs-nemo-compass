@@ -37,7 +37,7 @@ See DEVELOPMENT.md for collection scope and exception handling.
 | [`click 8.5.0`](https://pypi.org/project/click/8.5.0/) | `BSD-3-CLAUSE` | [NOTICES.txt](third_party/NOTICES.txt), [BSD-3-Clause.txt](third_party/license_texts/BSD-3-Clause.txt) |
 | [`cloudpickle 3.1.2`](https://pypi.org/project/cloudpickle/3.1.2/) | `BSD-3-CLAUSE` | [NOTICES.txt](third_party/NOTICES.txt), [BSD-3-Clause.txt](third_party/license_texts/BSD-3-Clause.txt) |
 | [`colorama 0.4.6`](https://pypi.org/project/colorama/0.4.6/) | `BSD-3-CLAUSE` | [NOTICES.txt](third_party/NOTICES.txt), [BSD-3-Clause.txt](third_party/license_texts/BSD-3-Clause.txt) |
-| [`cryptography 49.0.0`](https://pypi.org/project/cryptography/49.0.0/) | `APACHE-2.0 OR BSD-3-CLAUSE` | [NOTICES.txt](third_party/NOTICES.txt), [Apache-2.0.txt](third_party/license_texts/Apache-2.0.txt), [BSD-3-Clause.txt](third_party/license_texts/BSD-3-Clause.txt) |
+| [`cryptography 50.0.1`](https://pypi.org/project/cryptography/50.0.1/) | `APACHE-2.0 OR BSD-3-CLAUSE` | [NOTICES.txt](third_party/NOTICES.txt), [Apache-2.0.txt](third_party/license_texts/Apache-2.0.txt), [BSD-3-Clause.txt](third_party/license_texts/BSD-3-Clause.txt) |
 | [`databricks-sdk 0.133.0`](https://pypi.org/project/databricks-sdk/0.133.0/) | `APACHE-2.0` | [NOTICES.txt](third_party/NOTICES.txt), [Apache-2.0.txt](third_party/license_texts/Apache-2.0.txt) |
 | [`distro 1.9.0`](https://pypi.org/project/distro/1.9.0/) | `APACHE-2.0` | [NOTICES.txt](third_party/NOTICES.txt), [Apache-2.0.txt](third_party/license_texts/Apache-2.0.txt) |
 | [`fastapi 0.141.1`](https://pypi.org/project/fastapi/0.141.1/) | `MIT` | [NOTICES.txt](third_party/NOTICES.txt), [MIT.txt](third_party/license_texts/MIT.txt) |
