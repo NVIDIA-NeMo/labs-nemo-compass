@@ -11,12 +11,87 @@ from nooa.unifiedllm import FakeLLMClient
 from insight_agent.cli.main import _run_evidence_streams
 from insight_agent.config import EvidenceStreamsConfig
 from insight_agent.evidence_streams.anomaly_and_patterns.stream import (
+    AnomalyAndPatternsAnalysis,
     NormalizedCall,
     NormalizedTrace,
+    problems_from_analysis,
     run_anomaly_and_patterns,
 )
+from insight_agent.evidence_streams.tool_issues.stream import build_cards, problems_from_cards
 from insight_agent.evidence_streams.user_sentiment import stream as sentiment
 from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
+
+
+@pytest.mark.parametrize("stream,preview_size", [("tool", 3), ("anomaly", 50)])
+def test_candidate_membership_survives_bounded_problem_projection(stream, preview_size):
+    expected = tuple(f"trace-{i}" for i in range(preview_size + 2))
+    if stream == "tool":
+        findings = [
+            {
+                "trace_id": trace_id,
+                "logical_case_id": trace_id if i <= preview_size else expected[0],
+                "issue_type": "missing_tool_result",
+                "mechanism_key": "missing-result",
+                "call_id": f"call-{i}",
+                "call_index": i,
+                "tool_name": "lookup",
+                "source_pointer": {},
+                "summary": "No result recorded",
+            }
+            for i, trace_id in enumerate(expected)
+        ]
+        # Repeated findings must deduplicate by trace, not collapse a logical case.
+        findings.append(findings[0] | {"call_id": "another-call"})
+        findings.extend(
+            finding | {"trace_id": f"sibling-{i}", **other_group}
+            for i, finding in enumerate(findings[:3])
+            for other_group in (
+                {"mechanism_key": "other-mechanism"},
+                {"issue_type": "duplicate_tool_result"},
+            )
+        )
+        cards = build_cards(findings)
+        card = next(
+            card
+            for card in cards
+            if card.issue_type == "missing_tool_result" and card.mechanism_key == "missing-result"
+        )
+        (problem,) = problems_from_cards([card])
+    else:
+        rows = [
+            {
+                "trace_id": trace_id,
+                "anomaly_score": len(expected) - i,
+                "is_anomaly": True,
+                "anomaly_reasons": ("duration",),
+                "pca_x": 0,
+                "pca_y": 0,
+                "source_pointer": {},
+            }
+            for i, trace_id in enumerate(expected)
+        ]
+        rows.extend(
+            [
+                rows[0],
+                rows[0] | {"trace_id": "not-flagged", "is_anomaly": False, "anomaly_score": 100},
+            ]
+        )
+        result = AnomalyAndPatternsAnalysis.model_validate(
+            dict(
+                prepared=(),
+                failure_events=(),
+                anomalies=rows[::-1],
+                trajectory_groups=None,
+                verdict_groups=(),
+                failure_groups=(),
+                cross_tool_failure_groups=(),
+                digest="",
+            )
+        )
+        (problem,) = problems_from_analysis(result)
+
+    assert problem.candidate_trace_ids == expected
+    assert problem.supporting_trace_ids == expected[:preview_size]
 
 
 @pytest.mark.parametrize("count,patterns", [(0, 1), (2, 2), (10, 1), (10, 2)])

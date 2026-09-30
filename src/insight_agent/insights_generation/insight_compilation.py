@@ -50,8 +50,10 @@ class InsightCompilation(Agent):
         must have more than one trace that supports it. We want to identify
         problems that are broader in scope than a one-off.
 
-        Fetch supporting traces one at a time with
-        trace_snapshot.get_trace_by_id(trace_id).
+        Inspect bounded trace excerpts with trace_snapshot.get_trace_by_id(trace_id).
+        Use the available Python execution capability to iterate trace_snapshot
+        for programmatic searches and verification without printing entire traces
+        or datasets into context. Inspect compact witnesses and ambiguous cases.
 
         After validating, you must merge the new insights with the existing
         insights, and across evidence streams.
@@ -83,9 +85,33 @@ class InsightCompilation(Agent):
         assign an existing id to a new insight; new insights have id=None.
         Existing insights should never be removed or modified, but you can
         update the trace_refs on existing insights to match new traces you
-        identified. Only use trace_refs that come from evidence streams, don't
-        worry about searching the trace snapshot to find traces that match a
-        particular insight. When you merge insights, also merge the trace_refs.
+        identified. Preserve historical refs already attached to existing insights,
+        including those outside this snapshot; their absence here is not a reason
+        to remove them. Verify newly combined or attached refs against the final
+        merged claim rather than blindly unioning refs or candidates.
+
+        After validating, narrowing, and merging, complete the evidence for each
+        final insight within the selected snapshot:
+        1. Fix the insight's meaning. Establish the exact conditions recorded
+           events must satisfy, including any temporal sequence, context, recovery,
+           duration, or impact asserted by the claim. Do not broaden the claim
+           during evidence expansion to accommodate more traces.
+        2. Examine all known upstream membership: supporting_trace_ids and
+           candidate_trace_ids on relevant Problems, using stream artifacts for
+           provenance. Candidates are leads, not verified support; an empty
+           candidate collection does not imply no other matches exist.
+        3. Search the rest of trace_snapshot for additional occurrences satisfying
+           the same conditions, even when no stream cited them. Where reliable,
+           use programmatic checks grounded in recorded events, joining evidence
+           across steps/spans by recorded identity when required. Group membership,
+           shared keywords, and copied history alone are insufficient witnesses.
+           Do not assume every semantic claim has a reliable mechanical predicate;
+           inspect context when a scan cannot establish the claim.
+        4. Return every verified matching trace ID in trace_refs, deduplicated.
+           Missing required telemetry is unresolved, not a match or proof of
+           absence. Keep compact verification counts and unresolved/coverage limits
+           in your working analysis; a completed scan alone does not establish
+           exhaustive semantic coverage. Never attach unresolved candidates.
 
         Leave trace_links empty; the application resolves source links after compilation.
 

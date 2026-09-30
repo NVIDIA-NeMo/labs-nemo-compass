@@ -17,6 +17,14 @@ class Problem(BaseModel):
 
     description: str = Field(min_length=1)
     supporting_trace_ids: tuple[str, ...] = Field(min_length=1)
+    candidate_trace_ids: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Complete known upstream candidate membership when supplied; may overlap "
+            "initial supporting examples. Neither verified support for the final insight nor an "
+            "exhaustive snapshot search. Empty means no additional membership supplied."
+        ),
+    )
 
 
 class EvidenceStreamResult(BaseModel):

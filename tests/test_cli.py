@@ -202,7 +202,11 @@ def test_code_validation_filters_problems_and_preserves_stream_result(
 ) -> None:
     trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
     snapshot = TraceSnapshot([trace])
-    supported = Problem(description="Supported", supporting_trace_ids=("trace-1",))
+    supported = Problem(
+        description="Supported",
+        supporting_trace_ids=("trace-1",),
+        candidate_trace_ids=("trace-1", "not-fetched-by-code-validator"),
+    )
     unsupported = Problem(description="Unsupported", supporting_trace_ids=("trace-1",))
     unknown = Problem(description="Unknown", supporting_trace_ids=("trace-1",))
     evidence = [
