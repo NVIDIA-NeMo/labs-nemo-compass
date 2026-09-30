@@ -7,7 +7,10 @@ import warnings
 from collections.abc import Callable
 from typing import Literal
 
-from nooa import Agent
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.strategies import CodeActStrategy
+from nooa.strategy_validation import InvariantError
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import SkipJsonSchema
 
@@ -49,21 +52,26 @@ class EvidenceCompletion(BaseModel):
             raise ValueError(f"Witness does not exist in trace {trace.id}")
         return decision
 
-    def scan(self, snapshot: TraceSnapshot) -> tuple[list[str], int]:
-        """Run checks, then the whole snapshot. Any failure invalidates all additions.
-
-        Call during development for execution feedback; finalization reruns this
-        before attaching refs. Checks include a source positive, a close negative,
-        and missing evidence, using Trace copies for counterfactuals when needed.
-        """
-        if self.unresolved_reason or self.predicate is None:
-            raise ValueError(self.unresolved_reason or "No checked predicate supplied")
+    def check(self) -> None:
+        """Validate the completion outcome and execute its acceptance checks."""
+        if self.predicate is None:
+            if not self.unresolved_reason or not self.unresolved_reason.strip() or self.checks:
+                raise ValueError("Abstention requires a nonblank unresolved_reason and no checks")
+            return
+        if not callable(self.predicate) or self.unresolved_reason is not None:
+            raise ValueError("Completion requires a live callable and no unresolved_reason")
         if {expected for _, expected in self.checks} != {"match", "no_match", "unknown"}:
             raise ValueError("Check a positive, a close negative, and missing evidence first")
         for trace, expected in self.checks:
             actual = self._evaluate(trace).status
             if actual != expected:
                 raise ValueError(f"Check {trace.id}: expected {expected}, got {actual}")
+
+    def scan(self, snapshot: TraceSnapshot) -> tuple[list[str], int]:
+        """Run acceptance checks, then the whole snapshot; any failure rejects additions."""
+        self.check()
+        if self.predicate is None:
+            raise ValueError(self.unresolved_reason)
         matches = []
         unknown = 0
         for trace in snapshot:
@@ -102,6 +110,21 @@ class EvidenceCompletion(BaseModel):
         )
 
 
+def _validate_completions(
+    _agent: Agent, completions: list[EvidenceCompletion], _call: object
+) -> None:
+    for completion in completions:
+        try:
+            completion.check()
+        except Exception as error:
+            raise InvariantError(
+                f"{completion.insight.name}: {error}. "
+                "Call return_result with the existing live completion objects inside Python, "
+                "rather than rebuilding them as JSON. To abstain, omit the predicate and "
+                "checks and supply a nonblank unresolved_reason."
+            ) from error
+
+
 class InsightCompilation(Agent):
     async def compile_insights(
         self,
@@ -114,6 +137,7 @@ class InsightCompilation(Agent):
         )
         return [completion.apply(trace_snapshot) for completion in completions]
 
+    @strategy(CodeActStrategy(config=CodeActConfig(postconditions=[_validate_completions])))
     async def _compile_insights(
         self,
         evidence_streams: list[EvidenceStreamResult],
@@ -145,7 +169,7 @@ class InsightCompilation(Agent):
            exclusions, and missing evidence. An error occurrence alone cannot prove
            causality or task failure. Never weaken the claim to gain citations. If
            material qualifications cannot be faithfully checked, preserve the insight
-           and return predicate=None with an unresolved_reason.
+           and return predicate=None, no checks, and a nonblank unresolved_reason.
 
         2. Develop a pure predicate(trace) against the actual Trace schema. Use
            supporting_trace_ids, complete candidate_trace_ids, and stream artifacts
@@ -176,14 +200,18 @@ class InsightCompilation(Agent):
            checks=checks) and run .scan(trace_snapshot). It executes the checks,
            validates result shape and source witnesses, and scans the entire selected
            snapshot, including traces absent from upstream candidates. On execution
-           failure or failed checks, make at most one repair and rerun. If still invalid,
+           failure or failed checks, make at most one predicate repair and rerun. If still invalid,
            return predicate=None with unresolved_reason; discard all proposed additions.
            A broken method's zero matches do not establish absence.
 
-        Return the completions without manually adding their results to trace_refs.
+        Return live completions through return_result inside Python, without manually
+        adding results to trace_refs. Return validation can request a correction while
+        the session is live; restoring a callable does not consume its predicate repair.
         Finalization reruns checks and scans, attaches deduplicated matches, retains
         initial citations on failure, and warns about unresolved completion. Report
-        uncheckable or partial work through unresolved_reason. Valid references do not
+        inability to complete through unresolved_reason, without a predicate or checks.
+        With a usable predicate, unknown decisions report partial coverage while matches
+        remain attachable; do not also set unresolved_reason. Valid references do not
         prove semantic support; scanning establishes coverage under the checked predicate,
         not exhaustive truth. Keep interpretation and coverage limits in working analysis.
         """
