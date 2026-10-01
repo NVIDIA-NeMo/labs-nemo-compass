@@ -32,6 +32,7 @@ class Insight(BaseModel):
     description: str = Field(min_length=1)
     severity: Severity | None = Field(
         default=None,
+        exclude_if=lambda value: value is None,
         description=(
             "How urgently this needs attention: low, medium, or high. "
             "Absent only on insights saved before this field existed."
@@ -40,6 +41,7 @@ class Insight(BaseModel):
     severity_reason: str | None = Field(
         default=None,
         min_length=1,
+        exclude_if=lambda value: value is None,
         description="Plain-language reason for the severity bucket, one short sentence.",
     )
     trace_refs: list[str] = Field(min_length=2)

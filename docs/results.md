@@ -95,13 +95,8 @@ establish that your agent is free of problems.
 
 ## Saved output
 
-<<<<<<< HEAD
-The output is a YAML list with `name`, `description`, `severity`, `severity_reason`,
-`trace_refs`, and optional `trace_links` for each insight.
-=======
 The output is a YAML list with `name`, `description`, `trace_refs`, and optional
-`trace_links` and `updated_date` for each insight.
->>>>>>> main
+`trace_links`, `severity`, `severity_reason` and `updated_date` for each insight.
 Each insight has at least two trace references.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
