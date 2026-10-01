@@ -31,7 +31,7 @@ def trace(trace_id, stage="enrich", output='{"title":"unfinished'):
 
 def truncated_enrich(trace):
     span = trace.root_spans[0]
-    # A known wrong stage rules out the claim even if output is unavailable.
+    # The claim does not apply to another stage, even when its output is missing.
     if span.attributes.get("stage") != "enrich":
         return {"status": "no_match"}
     if span.output is UNSET:
@@ -78,34 +78,34 @@ def completion_case():
     "fault",
     [
         "runtime",
-        "shape",
-        "foreign_witness",
-        "empty_witness",
-        "zero_scan",
+        "invalid_status",
+        "span_from_another_trace",
+        "missing_span_ids",
+        "no_snapshot_matches",
     ],
 )
 def test_invalid_completion_retains_citations_and_reports_failure(completion_case, fault):
     insight, checks, snapshot = completion_case
 
     def predicate(item):
-        if fault == "zero_scan" and item.id != "synthetic-positive":
+        if fault == "no_snapshot_matches" and item.id != "synthetic-positive":
             return {"status": "unknown" if item.id == "missing" else "no_match"}
         if item.id == "additional":
             if fault == "runtime":
-                raise RuntimeError("Extraction failed after an earlier match")
-            if fault == "shape":
+                raise RuntimeError("Predicate failed after an earlier match")
+            if fault == "invalid_status":
                 return EvidenceDecision.model_construct(status="maybe")
-            if fault == "foreign_witness":
+            if fault == "span_from_another_trace":
                 return {"status": "match", "witness_span_ids": ("seed-span",)}
-            if fault == "empty_witness":
+            if fault == "missing_span_ids":
                 return {"status": "match"}
         return truncated_enrich(item)
 
-    if fault == "zero_scan":
+    if fault == "no_snapshot_matches":
         checks[0] = (trace("synthetic-positive"), "match")
     completion = EvidenceCompletion(insight=insight, predicate=predicate, checks=checks)
     with pytest.warns(
-        UserWarning, match="(?s)Evidence completion unresolved.*no completion additions"
+        UserWarning, match="(?s)The evidence scan did not complete.*added no new references"
     ):
         result = completion.apply(snapshot)
     assert result == insight
@@ -132,14 +132,17 @@ def response(name, arguments, call_id):
 @pytest.mark.parametrize(
     "invalid_return, diagnostic",
     [
-        (None, "Abstention requires"),
-        ("EvidenceCompletion(insight=completion.insight)", "Abstention requires"),
-        ("completion.model_copy(update={'unresolved_reason': 'partial'})", "no unresolved_reason"),
+        (None, "Without a predicate"),
+        ("EvidenceCompletion(insight=completion.insight)", "Without a predicate"),
+        (
+            "completion.model_copy(update={'unresolved_reason': 'partial'})",
+            "unresolved_reason=None",
+        ),
         (
             "completion.model_copy(update={'predicate': None, 'unresolved_reason': 'cannot check'})",
-            "Abstention requires",
+            "Without a predicate",
         ),
-        ("completion.model_copy(update={'checks': []})", "Check a positive"),
+        ("completion.model_copy(update={'checks': []})", "Checks must include"),
         (
             "completion.model_copy(update={'predicate': lambda t: {'status': 'match', "
             "'witness_span_ids': (t.root_spans[0].id,)}})",
@@ -149,11 +152,11 @@ def response(name, arguments, call_id):
         (
             "completion.model_copy(update={'predicate': lambda t: {'status': 'match', "
             "'witness_span_ids': ('invented',)}})",
-            "Witness does not exist",
+            "Cited span ID does not exist",
         ),
     ],
 )
-def test_return_validation_repairs_handoff_in_live_session(
+def test_invalid_return_can_be_fixed_in_same_python_session(
     completion_case, invalid_return, diagnostic
 ):
     insight, checks, snapshot = completion_case
@@ -191,12 +194,12 @@ def test_return_validation_repairs_handoff_in_live_session(
     ]
     assert llm.call_count == 3
     assert diagnostic in str(llm.last_messages)
-    assert "existing live completion objects" in str(llm.last_messages)
+    assert "JSON cannot preserve their functions" in str(llm.last_messages)
 
 
-def test_explicit_abstention_requires_nonblank_reason(completion_case):
+def test_skipping_the_scan_requires_nonblank_reason(completion_case):
     insight, _, snapshot = completion_case
-    valid_reason = "Required intent is not observable"
+    valid_reason = "The traces do not record the user intent"
     llm = FakeLLMClient(
         [
             response(

@@ -20,9 +20,9 @@ class Problem(BaseModel):
     candidate_trace_ids: tuple[str, ...] = Field(
         default=(),
         description=(
-            "Complete known upstream candidate membership when supplied; may overlap "
-            "initial supporting examples. Neither verified support for the final insight nor an "
-            "exhaustive snapshot search. Empty means no additional membership supplied."
+            "All trace IDs the stream found for this problem. This list may include supporting_trace_ids. "
+            "The compiler must check these traces against the final insight. "
+            "Other matches may exist in the snapshot. An empty list means the stream supplied no candidate list."
         ),
     )
 

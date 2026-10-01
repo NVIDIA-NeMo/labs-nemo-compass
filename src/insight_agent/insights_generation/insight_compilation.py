@@ -23,7 +23,7 @@ Decision = Literal["match", "no_match", "unknown"]
 
 
 class EvidenceDecision(BaseModel):
-    """A predicate's decision with witnesses in the canonical trace representation."""
+    """Whether a trace matches the insight, with IDs of the spans that support it."""
 
     model_config = ConfigDict(extra="forbid", revalidate_instances="always")
 
@@ -32,10 +32,13 @@ class EvidenceDecision(BaseModel):
 
 
 class EvidenceCompletion(BaseModel):
-    """Transient compiler output; predicates and checks are never persisted as insights."""
+    """An insight with a function and examples for checking its evidence.
+
+    The application saves only the insight. The function and checks stay in memory.
+    """
 
     insight: Insight
-    # Executable callables cross the agent's Python boundary, not its JSON tool schema.
+    # JSON cannot carry a function. Return this object from the agent's Python session.
     predicate: SkipJsonSchema[Callable[[Trace], EvidenceDecision | dict[str, object]] | None] = (
         Field(default=None, exclude=True, repr=False)
     )
@@ -47,29 +50,37 @@ class EvidenceCompletion(BaseModel):
         span_ids = {visit.span.id for visit in walk_spans(trace)}
         decision = EvidenceDecision.model_validate(self.predicate(trace))
         if decision.status == "match" and not decision.witness_span_ids:
-            raise ValueError(f"Match in {trace.id} has no source witnesses")
+            raise ValueError(f"Match in trace {trace.id} must cite at least one span ID")
         if set(decision.witness_span_ids) - span_ids:
-            raise ValueError(f"Witness does not exist in trace {trace.id}")
+            raise ValueError(f"Cited span ID does not exist in trace {trace.id}")
         return decision
 
-    def check(self) -> None:
-        """Validate the completion outcome and execute its acceptance checks."""
+    def validate_result(self) -> None:
+        """Check the function against examples, or require a reason for skipping the scan."""
         if self.predicate is None:
             if not self.unresolved_reason or not self.unresolved_reason.strip() or self.checks:
-                raise ValueError("Abstention requires a nonblank unresolved_reason and no checks")
+                raise ValueError(
+                    "Without a predicate, leave checks empty. Explain why in unresolved_reason. "
+                    "The reason must not be blank."
+                )
             return
         if not callable(self.predicate) or self.unresolved_reason is not None:
-            raise ValueError("Completion requires a live callable and no unresolved_reason")
+            raise ValueError("Provide a Python function as predicate. Set unresolved_reason=None.")
         if {expected for _, expected in self.checks} != {"match", "no_match", "unknown"}:
-            raise ValueError("Check a positive, a close negative, and missing evidence first")
+            raise ValueError(
+                "Checks must include expected results for match, no_match, and unknown"
+            )
         for trace, expected in self.checks:
             actual = self._evaluate(trace).status
             if actual != expected:
                 raise ValueError(f"Check {trace.id}: expected {expected}, got {actual}")
 
     def scan(self, snapshot: TraceSnapshot) -> tuple[list[str], int]:
-        """Run acceptance checks, then the whole snapshot; any failure rejects additions."""
-        self.check()
+        """Scan all traces after the example checks pass.
+
+        Return matching trace IDs and the count of unknown traces.
+        """
+        self.validate_result()
         if self.predicate is None:
             raise ValueError(self.unresolved_reason)
         matches = []
@@ -82,27 +93,27 @@ class EvidenceCompletion(BaseModel):
             unknown += decision.status == "unknown"
         if not matches:
             raise ValueError(
-                "No snapshot match reproduced the positive check; diagnose the method or seed"
+                "No traces matched despite a passing positive check. Review the function and example."
             )
         return matches, unknown
 
     def apply(self, snapshot: TraceSnapshot) -> Insight:
-        """Attach only a successful scan's additions; report unresolved completion."""
+        """Add matching trace IDs, or keep the insight unchanged if the scan fails."""
         try:
             matches, unknown = self.scan(snapshot)
         except Exception as error:
             warnings.warn(
-                f"Evidence completion unresolved for {self.insight.name!r}: "
-                f"{type(error).__name__}: {str(error)[:300]}. Initial citations retained; "
-                "no completion additions attached.",
+                f"The evidence scan did not complete for {self.insight.name!r}: "
+                f"{type(error).__name__}: {str(error)[:300]}. "
+                "The insight keeps its existing references. The scan added no new references.",
                 stacklevel=2,
             )
             return self.insight
         if unknown:
             warnings.warn(
-                f"Evidence completion unresolved for {self.insight.name!r}: "
-                f"{unknown} of {len(snapshot)} traces lack sufficient interpretable evidence. "
-                "Only verified matches attached; semantic completeness is not established.",
+                f"Evidence scan incomplete for {self.insight.name!r}: "
+                f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
+                "The scan added its matches, but other supporting traces may remain without references.",
                 stacklevel=2,
             )
         return self.insight.model_copy(
@@ -113,15 +124,16 @@ class EvidenceCompletion(BaseModel):
 def _validate_completions(
     _agent: Agent, completions: list[EvidenceCompletion], _call: object
 ) -> None:
+    """Reject invalid returns while the agent can still fix them in Python."""
     for completion in completions:
         try:
-            completion.check()
+            completion.validate_result()
         except Exception as error:
             raise InvariantError(
                 f"{completion.insight.name}: {error}. "
-                "Call return_result with the existing live completion objects inside Python, "
-                "rather than rebuilding them as JSON. To abstain, omit the predicate and "
-                "checks and supply a nonblank unresolved_reason."
+                "Inside Python, call return_result with the EvidenceCompletion objects you "
+                "created. JSON cannot preserve their functions. If you cannot check the evidence, "
+                "return predicate=None and checks=[]. Explain why in unresolved_reason."
             ) from error
 
 
@@ -177,8 +189,8 @@ class InsightCompilation(Agent):
         must have more than one trace that supports it. We want to identify
         problems that are broader in scope than a one-off.
 
-        Inspect supporting traces in bounded excerpts with
-        trace_snapshot.get_trace_by_id(trace_id); use Python for snapshot scans.
+        Inspect short excerpts of supporting traces with
+        trace_snapshot.get_trace_by_id(trace_id). Use Python for snapshot scans.
 
         After validating, you must merge the new insights with the existing
         insights, and across evidence streams.
@@ -210,71 +222,84 @@ class InsightCompilation(Agent):
         assign an existing id to a new insight; new insights have id=None.
         Existing insights should never be removed or modified, but you can
         update the trace_refs on existing insights to match new traces you
-        identified. Preserve historical refs, including those outside this snapshot.
-        When you merge insights, newly combined refs must support the final merged
-        claim; do not blindly union refs or candidates.
+        identified. Keep existing references, including those outside this snapshot.
+        When you merge insights, check that added references support the merged
+        claim. Do not copy every candidate into trace_refs.
 
         Leave trace_links empty; the application resolves source links after compilation.
 
-        After validation, narrowing, and merging, complete evidence for each final
-        insight. Keep initial trace_refs at validated examples and historical refs;
-        the application adds completion matches. Use the following workflow for every
-        snapshot size. Example inspection aids predicate development; neither direct
-        review nor similarity retrieval replaces it.
+        After validating, narrowing, and merging insights, find all traces that support
+        each final claim. Keep only checked examples and existing references in trace_refs.
+        The application adds further matches. Use this workflow for every snapshot
+        size. Review examples to develop the function below. Manual review and
+        similarity search cannot replace it.
 
-        1. Fix the claim. State its observable requirements in working analysis:
-           operation, trigger, behavior, joins, order, recovery, duration, impact,
-           exclusions, and missing evidence. An error occurrence alone cannot prove
-           causality or task failure. Never weaken the claim to gain citations. If
-           material qualifications cannot be faithfully checked, preserve the insight
-           and return predicate=None, no checks, and a nonblank unresolved_reason.
+        1. Define the claim. State in your working analysis what the recorded data
+           must show:
+           - The operation, trigger, and behavior.
+           - Required links between events, order, recovery, duration, and impact.
+           - Conditions that exclude a match, and evidence needed to decide.
 
-        2. Develop a pure predicate(trace) against the actual Trace schema. Use
-           supporting_trace_ids, complete candidate_trace_ids, and stream artifacts
-           for examples and discrepancy investigation. Fetch with
-           trace_snapshot.get_trace_by_id(id); walk_spans(trace) yields visits with
-           .span. Inspect bounded excerpts, keeping full data in Python. Preserve
-           source identities and event order; do not mutate source traces. Make the
-           callable self-contained, with needed imports inside it. Never hardcode
-           trace IDs, expected counts, or answer lists.
+           An error alone cannot prove its cause or that the task failed. Never
+           weaken the claim to gain references. If you cannot check required
+           conditions, return the insight with predicate=None and checks=[].
+           Explain why in unresolved_reason.
+
+        2. Write predicate(trace), a function that checks whether one trace supports
+           the claim. Work with the actual Trace fields. Use supporting_trace_ids,
+           candidate_trace_ids, and stream artifacts to find examples and investigate
+           disagreements. Read traces with trace_snapshot.get_trace_by_id(id).
+           walk_spans(trace) yields visits with .span.
+
+           Print only short excerpts. Keep full data in Python, including span IDs
+           and event order. Do not change source traces. The function's result must
+           depend only on the trace. Put needed imports inside the function so it
+           can run on its own. Never hardcode trace IDs, expected counts, or answer lists.
 
            Return EvidenceDecision(status=..., witness_span_ids=(...)):
-           - match: recorded events establish every material condition; cite their
-             canonical span IDs. Membership, keywords, and copied history alone are
-             insufficient. Anchor copied records to their original events.
-           - no_match: sufficient evidence rules out the claim.
-           - unknown: required evidence is unavailable or uninterpretable, unless
-             another observed condition already rules out the claim.
+           - match: recorded events establish every required condition. Cite the
+             span.id values that show it. A shared group or keyword is insufficient.
+             Copied history alone is also insufficient. Link copied records to
+             their original events.
+           - no_match: recorded evidence shows that the claim does not apply.
+           - unknown: required evidence is missing or uninterpretable. Use no_match
+             if another recorded condition already shows that the claim does not apply.
 
-        3. Build compact checks=[(Trace, expected_status), ...]: an established
-           positive, close negatives, and missing required evidence. For counterfactuals,
-           use model_copy(deep=True), change one material condition, and leave others
-           satisfied. Remove individual required fields from matching examples rather
-           than only testing empty traces. Diagnose seed mismatches: the predicate,
-           extraction, or original citation may be wrong. Do not relax the claim to
-           make seeds pass.
+        3. Build a small checks=[(Trace, expected_status), ...] list. Include a known
+           match, similar cases that fail a required condition, and missing required data.
+           Use model_copy(deep=True) to make test copies. Change one condition while
+           keeping the others satisfied. Remove individual required fields from
+           matching examples instead of testing only empty traces.
+
+           If a supplied example fails, investigate the function, extracted data,
+           and reference. Do not relax the claim just to make the example pass.
 
         4. Create EvidenceCompletion(insight=initial_insight, predicate=predicate,
-           checks=checks) and run .scan(trace_snapshot). It executes the checks,
-           validates result shape and source witnesses, and scans the entire selected
-           snapshot, including traces absent from upstream candidates. On execution
-           failure or failed checks, make at most one predicate repair and rerun.
-           If still invalid, return predicate=None with unresolved_reason; discard
-           all proposed additions.
-           A broken method's zero matches do not establish absence.
+           checks=checks). Run .scan(trace_snapshot) on this object. It runs the
+           example checks and checks the returned fields and cited span IDs. It
+           scans every trace, including those outside candidate_trace_ids.
 
-        Return live completions through return_result inside Python, without manually
-        adding results to trace_refs. Return validation can request a correction while
-        the session is live; restoring a callable does not consume its predicate repair.
-        Finalization reruns checks and scans, attaches deduplicated matches, retains
-        initial citations on failure, and warns about unresolved completion. Report
-        inability to complete through unresolved_reason, without a predicate or checks.
-        With a usable predicate, unknown decisions report partial coverage while matches
-        remain attachable; do not also set unresolved_reason. Valid references do not
-        prove semantic support; scanning establishes coverage under the checked predicate,
-        not exhaustive truth. Keep interpretation and coverage limits in working analysis.
+           If execution or checks fail, change the predicate at most once. Rerun
+           the checks and scan after that change. If it still fails, return the
+           insight with predicate=None and checks=[]. Explain why in unresolved_reason.
+           Discard all proposed additions. A broken function returning zero matches
+           does not prove there are none.
 
-        Return one EvidenceCompletion per ranked, validated and merged insight.
+        Return the EvidenceCompletion objects you created through return_result
+        inside Python. Do not add their matches to trace_refs yourself. You can
+        fix a rejected return while your Python variables still exist. Fixing how
+        you return an existing function does not count as changing it.
+
+        The application reruns checks and scans before adding trace IDs without
+        duplicates. If a scan fails, it keeps existing references. If some traces
+        are unknown, it adds matches and warns that coverage is incomplete.
+        Only set unresolved_reason when returning no predicate or checks.
+
+        A span's existence does not prove it supports the claim. A completed scan
+        covers this snapshot under the checked function. It does not prove that
+        the function found every supporting trace. Note these limits in your working analysis.
+
+        Return one EvidenceCompletion per final insight.
         Include existing insights.
         """
         ...

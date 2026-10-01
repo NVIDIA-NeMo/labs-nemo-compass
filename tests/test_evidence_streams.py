@@ -23,7 +23,7 @@ from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
 
 
 @pytest.mark.parametrize("stream,preview_size", [("tool", 3), ("anomaly", 50)])
-def test_candidate_membership_survives_bounded_problem_projection(stream, preview_size):
+def test_streams_keep_all_candidates_and_limit_review_examples(stream, preview_size):
     expected = tuple(f"trace-{i}" for i in range(preview_size + 2))
     if stream == "tool":
         findings = [
@@ -40,7 +40,7 @@ def test_candidate_membership_survives_bounded_problem_projection(stream, previe
             }
             for i, trace_id in enumerate(expected)
         ]
-        # Repeated findings must deduplicate by trace, not collapse a logical case.
+        # Keep different traces of the same case. Remove duplicate trace IDs.
         findings.append(findings[0] | {"call_id": "another-call"})
         findings.extend(
             finding | {"trace_id": f"sibling-{i}", **other_group}
