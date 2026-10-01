@@ -64,10 +64,6 @@ discard it, so candidate counts can exceed the number of saved insights.
 **Skipped** means it could not run. A limitation beside a completed evidence stream describes
 missing coverage; it does not mean the whole evidence stream was skipped.
 
-When a run saves insights, the report includes a prompt for your coding agent.
-Paste it into a coding agent in your agent's codebase to investigate and fix one issue.
-The prompt includes the full path to the saved insights file.
-
 ## An evidence stream was skipped
 
 Open [Evidence streams](evidence-streams.md) for the prerequisite and a setup example.
