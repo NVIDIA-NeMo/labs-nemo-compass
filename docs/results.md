@@ -90,8 +90,14 @@ establish that your agent is free of problems.
 
 ## Saved output
 
-The output is a YAML list with `name`, `description`, and `evidence` for each insight.
-Each insight has at least two supporting traces. Empty spans and absent URLs are omitted.
+The output is a YAML list with `name`, `description`, `evidence`, and optional
+`updated_date` for each insight. Each insight has at least two supporting traces.
+Empty spans and absent URLs are omitted.
+
+`updated_date` is a UTC timestamp set when an insight is created or gains a trace it
+didn't already have. It is omitted until that first happens, and an insight that gains
+no new trace in a run keeps its prior `updated_date` unchanged. See
+[repeat a run](configuration.md#repeat-a-run) for reconciling across runs.
 
 By default, a non-empty collection is written to `insights.yml`.
 **An empty result leaves any existing output file untouched.** Use a fresh output path

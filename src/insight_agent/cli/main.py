@@ -22,6 +22,7 @@ import os
 import sys
 from argparse import SUPPRESS, Action, ArgumentParser
 from collections.abc import Callable, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -337,7 +338,10 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             existing_insights=existing,
         )
         if any(item.problems for item in evidence):
-            result.insights = await _compile_evidence(config, api_key, snapshot, result, output)
+            run_timestamp = datetime.now(timezone.utc)
+            result.insights = await _compile_evidence(
+                config, api_key, snapshot, result, output, run_timestamp
+            )
         result.insights = resolve_trace_links(result.insights, snapshot, existing)
         return result
 
@@ -348,6 +352,7 @@ async def _compile_evidence(
     snapshot: TraceSnapshot,
     result: RunResult,
     output: RunOutput,
+    run_timestamp: datetime,
 ) -> list[Insight]:
     evidence = result.evidence
     async with _build_llm(config, api_key) as llm:
@@ -364,6 +369,7 @@ async def _compile_evidence(
             evidence,
             snapshot,
             result.existing_insights,
+            run_timestamp,
         )
 
 
