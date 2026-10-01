@@ -13,18 +13,20 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
-  trace_refs:
-    - run-12
-    - run-38
-  trace_links:
-    run-12: https://observability.example.com/traces/run-12
-    run-38: https://observability.example.com/traces/run-38
+  evidence:
+    - trace_id: run-12
+      url: https://observability.example.com/traces/run-12
+      spans:
+        - span_id: lookup-3
+          url: https://observability.example.com/spans/lookup-3
+    - trace_id: run-38
+      url: https://observability.example.com/traces/run-38
 ```
 
 Open a trace link to review the supporting behavior before deciding what to change.
-The terminal also shows these URLs, clickable in terminals that support hyperlinks.
-`trace_refs` retains stable IDs; `trace_links` maps those IDs to source locations and is
-omitted when no links are available. URLs come from the loader, not the inference model.
+The terminal uses trace and span IDs as clickable labels. Plain-text logs show the URLs.
+Each `evidence` entry identifies a supporting trace and optionally its relevant spans.
+URLs are optional and come from the loader, not the inference model.
 
 Live LangSmith and Langfuse traces use their provider-returned UI locations; live MLflow
 traces use the HTTP tracking server’s UI. Braintrust links require your
@@ -41,6 +43,14 @@ When a provider does not supply a usable URL, or its location cannot be determin
 (for example, an MLflow `databricks` or local tracking URI), the ID remains available.
 Previously saved links survive reconciliation for traces absent from the current run;
 links for traces loaded in this run are resolved from the current source.
+
+Each trace entry can list relevant `spans` at any nesting depth, with a `span_id` and
+optional `url`. Braintrust and live LangSmith supply span links; other sources retain
+span IDs. An entry without spans refers to the whole trace.
+
+The terminal groups spans beneath their trace, one per line. If a span has no link,
+the trace link remains available as a fallback. Displayed IDs are shortened but stay
+distinguishable within their group; saved YAML retains complete IDs and links.
 
 ## Terminal report
 
@@ -80,9 +90,8 @@ establish that your agent is free of problems.
 
 ## Saved output
 
-The output is a YAML list with `name`, `description`, `trace_refs`, and optional
-`trace_links` for each insight.
-Each insight has at least two trace references.
+The output is a YAML list with `name`, `description`, and `evidence` for each insight.
+Each insight has at least two supporting traces. Empty spans and absent URLs are omitted.
 
 By default, a non-empty collection is written to `insights.yml`.
 **An empty result leaves any existing output file untouched.** Use a fresh output path

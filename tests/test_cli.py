@@ -156,10 +156,15 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     clean_environment, tmp_path, monkeypatch, capsys, select_streams
 ):
     existing = [
-        Insight(
-            name="Search omits archived documents",
-            description="Archived documents disappear from search results.",
-            trace_refs=["historical-trace-1", "historical-trace-2"],
+        Insight.model_validate(
+            {
+                "name": "Search omits archived documents",
+                "description": "Archived documents disappear from search results.",
+                "evidence": [
+                    {"trace_id": "historical-trace-1"},
+                    {"trace_id": "historical-trace-2"},
+                ],
+            }
         )
     ]
     existing_path = tmp_path / "existing.json"

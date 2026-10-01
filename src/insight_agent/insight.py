@@ -15,6 +15,17 @@ from trace_ingest.source_links import SourceURL
 from insight_agent.traces import TraceSnapshot
 
 
+class SpanEvidence(BaseModel):
+    span_id: str = Field(min_length=1)
+    url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class TraceEvidence(BaseModel):
+    trace_id: str = Field(min_length=1)
+    url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
+    spans: list[SpanEvidence] = Field(default_factory=list, exclude_if=lambda value: not value)
+
+
 class Insight(BaseModel):
     """A validated, actionable problem found in the agent's traces."""
 
@@ -26,40 +37,55 @@ class Insight(BaseModel):
     )
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
-    trace_refs: list[str] = Field(min_length=2)
-    trace_links: dict[str, SourceURL] = Field(
-        default_factory=dict,
-        exclude_if=lambda value: not value,
-        description="Resolved source URLs keyed by trace ID; populated by the application.",
+    evidence: list[TraceEvidence] = Field(
+        min_length=2,
+        description="Supporting traces with optional relevant spans. URLs are populated by the application.",
     )
 
 
 def resolve_trace_links(
     insights: Sequence[Insight], snapshot: TraceSnapshot, existing: Sequence[Insight] = ()
 ) -> list[Insight]:
-    """Attach only loader or previously saved links, never model-generated URLs."""
-    known = {
-        ref: url
-        for insight in existing
-        for ref, url in insight.trace_links.items()
-        if ref in insight.trace_refs
-    }
-    resolved = {}
-    for ref in dict.fromkeys(ref for insight in insights for ref in insight.trace_refs):
-        try:
-            url = snapshot.get_trace_by_id(ref).source_url
-        except KeyError:
-            url = known.get(ref)
-        if url is not None:
-            resolved[ref] = url
-    return [
-        insight.model_copy(
-            update={
-                "trace_links": {ref: resolved[ref] for ref in insight.trace_refs if ref in resolved}
-            }
-        )
-        for insight in insights
-    ]
+    """Validate span references and attach only loader or previously saved URLs."""
+    known_urls = {}
+    known_spans: dict[str, dict[str, str | None]] = {}
+    for insight in existing:
+        for item in insight.evidence:
+            if item.url is not None:
+                known_urls[item.trace_id] = item.url
+            known_spans.setdefault(item.trace_id, {}).update(
+                (span.span_id, span.url) for span in item.spans
+            )
+    result = []
+    for insight in insights:
+        evidence = []
+        for item in insight.evidence:
+            try:
+                trace = snapshot.get_trace_by_id(item.trace_id)
+            except KeyError:
+                url = known_urls.get(item.trace_id)
+                available = known_spans.get(item.trace_id, {})
+            else:
+                url = trace.source_url
+                available = {}
+                pending = list(trace.root_spans)
+                while pending:
+                    span = pending.pop()
+                    pending.extend(span.children)
+                    available[span.id] = span.source_url
+            evidence.append(
+                TraceEvidence(
+                    trace_id=item.trace_id,
+                    url=url,
+                    spans=[
+                        SpanEvidence(span_id=sid, url=available[sid])
+                        for sid in dict.fromkeys(span.span_id for span in item.spans)
+                        if sid in available
+                    ],
+                )
+            )
+        result.append(insight.model_copy(update={"evidence": evidence}))
+    return result
 
 
 _INSIGHTS_ADAPTER = TypeAdapter(list[Insight])
