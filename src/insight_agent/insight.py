@@ -36,9 +36,7 @@ class Insight(BaseModel):
     updated_date: datetime | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
-        description=(
-            "UTC timestamp of the last time a trace was added to this insight"
-        ),
+        description="UTC timestamp of the last time a trace was added to this insight",
     )
 
 

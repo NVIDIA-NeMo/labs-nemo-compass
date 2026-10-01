@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 
-from insight_agent.cli.output import RunOutput, RunResult
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
 from insight_agent.insight import Insight, load_insights
 
@@ -23,7 +22,10 @@ def trace(id):
 def test_updated_date_round_trips_through_yaml(tmp_path):
     stamped_at = datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc)
     insight = Insight(
-        name="Timeouts", description="Repeated timeouts", trace_refs=["a", "b"], updated_date=stamped_at
+        name="Timeouts",
+        description="Repeated timeouts",
+        trace_refs=["a", "b"],
+        updated_date=stamped_at,
     )
     path = tmp_path / "insights.yml"
     path.write_text(yaml.safe_dump([insight.model_dump()]))
@@ -47,9 +49,11 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
 
     path = tmp_path / "traces.jsonl"
     path.write_text(
-        trace("a").model_dump_json() + "\n" + trace("b").model_dump_json() + "\n" + trace(
-            "c"
-        ).model_dump_json()
+        trace("a").model_dump_json()
+        + "\n"
+        + trace("b").model_dump_json()
+        + "\n"
+        + trace("c").model_dump_json()
     )
     monkeypatch.setattr(cli, "_check_environment", lambda config: "test-key")
     monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
@@ -95,6 +99,7 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     [after_first] = load_insights(first_output)
     assert after_first.updated_date == first_stamp  # untouched - exactly what the mock returned
 
+    assert first_compile.await_args is not None
     run_timestamp_arg = first_compile.await_args.args[-1]
     assert isinstance(run_timestamp_arg, datetime)  # main.py actually threads one through
 
@@ -110,7 +115,8 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     )
     second_output = tmp_path / "second-run-insights.yml"
     assert (
-        cli.main(run_args(second_output) + ["--existing-insights", str(first_output)]) == cli.EXIT_OK
+        cli.main(run_args(second_output) + ["--existing-insights", str(first_output)])
+        == cli.EXIT_OK
     )
     [after_second] = load_insights(second_output)
     assert after_second.trace_refs == ["a", "b", "c"]
@@ -125,7 +131,8 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     )
     third_output = tmp_path / "third-run-insights.yml"
     assert (
-        cli.main(run_args(third_output) + ["--existing-insights", str(second_output)]) == cli.EXIT_OK
+        cli.main(run_args(third_output) + ["--existing-insights", str(second_output)])
+        == cli.EXIT_OK
     )
     [after_third] = load_insights(third_output)
     assert after_third.updated_date == second_stamp
