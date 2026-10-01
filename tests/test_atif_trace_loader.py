@@ -329,7 +329,8 @@ def test_complete_cli_runs_real_evidence_stream(tmp_path, monkeypatch, capsys, s
         )
         == cli.EXIT_OK
     )
-    evidence, snapshot, existing = compilation.compile_insights.await_args.args
+    evidence, snapshot, existing, run_timestamp = compilation.compile_insights.await_args.args
+    assert isinstance(run_timestamp, datetime)
     assert len(snapshot) == 1
     assert existing == []
     assert evidence[0].stream_name == "tool-issues"

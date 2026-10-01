@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from nooa import Agent
 
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
@@ -16,6 +18,7 @@ class InsightCompilation(Agent):
         evidence_streams: list[EvidenceStreamResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
+        run_timestamp: datetime,
     ) -> list[Insight]:  # ty: ignore[empty-body] -- Nooa generates the ellipsis method at runtime.
         """
         Your job is to be the last step of the insight creation process. An
@@ -83,9 +86,17 @@ class InsightCompilation(Agent):
         assign an existing id to a new insight; new insights have id=None.
         Existing insights should never be removed or modified, but you can
         update the trace_refs on existing insights to match new traces you
-        identified. Only use trace_refs that come from evidence streams, don't
-        worry about searching the trace snapshot to find traces that match a
-        particular insight. When you merge insights, also merge the trace_refs.
+        identified. Only use trace_refs that come from evidence streams,
+        don't worry about searching the trace snapshot to find traces that
+        match a particular insight. When you merge insights, also merge the
+        trace_refs.
+
+        You are given run_timestamp, the current time for this run. Set an
+        insight's updated_date to run_timestamp whenever you create it, or
+        whenever you add a trace to an existing insight that it did not
+        already support. If an existing insight gains no new trace this run,
+        leave its updated_date exactly as given, including leaving it unset
+        if it was already unset -- never invent one and never clear one.
 
         Leave trace_links empty; the application resolves source links after compilation.
 

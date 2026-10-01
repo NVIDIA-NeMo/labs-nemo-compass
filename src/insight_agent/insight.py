@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -47,6 +48,11 @@ class Insight(BaseModel):
         exclude_if=lambda value: not value,
         description="Resolved source URLs keyed by trace ID; populated by the application.",
     )
+    updated_date: datetime | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="UTC timestamp of the last time a trace was added to this insight",
+    )
 
 
 def resolve_trace_links(
@@ -86,4 +92,4 @@ def load_insights(path: Path) -> list[Insight]:
     return _INSIGHTS_ADAPTER.validate_python(payload)
 
 
-__all__ = ["Insight", "load_insights"]
+__all__ = ["Insight", "load_insights", "resolve_trace_links"]
