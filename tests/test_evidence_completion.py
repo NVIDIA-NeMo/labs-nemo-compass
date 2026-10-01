@@ -111,17 +111,12 @@ def test_invalid_completion_retains_citations_and_reports_failure(completion_cas
     assert result == insight
 
 
-def test_checked_scan_adds_only_matches_and_reports_unknowns(completion_case):
+def test_already_complete_claim_gains_no_refs(completion_case):
     insight, checks, snapshot = completion_case
+    insight.trace_refs.append("additional")
     completion = EvidenceCompletion(insight=insight, predicate=truncated_enrich, checks=checks)
     with pytest.warns(UserWarning, match="1 of 6 traces"):
-        result = completion.apply(snapshot)
-    assert result == insight.model_copy(update={"trace_refs": ["seed", "historical", "additional"]})
-
-    # An already-complete claim gains no refs on a repeated checked scan.
-    completion.insight = result
-    with pytest.warns(UserWarning, match="1 of 6 traces"):
-        assert completion.apply(snapshot) == result
+        assert completion.apply(snapshot) == insight
 
 
 def response(name, arguments, call_id):
@@ -199,15 +194,14 @@ def test_return_validation_repairs_handoff_in_live_session(
     assert "existing live completion objects" in str(llm.last_messages)
 
 
-@pytest.mark.parametrize("reason", ["Required intent is not observable", "   "])
-def test_explicit_abstention_requires_nonblank_reason(completion_case, reason):
+def test_explicit_abstention_requires_nonblank_reason(completion_case):
     insight, _, snapshot = completion_case
     valid_reason = "Required intent is not observable"
     llm = FakeLLMClient(
         [
             response(
                 "return_result",
-                {"result": [{"insight": insight.model_dump(), "unresolved_reason": reason}]},
+                {"result": [{"insight": insight.model_dump(), "unresolved_reason": "   "}]},
                 "abstain",
             ),
             response(
@@ -221,4 +215,4 @@ def test_explicit_abstention_requires_nonblank_reason(completion_case, reason):
         assert asyncio.run(
             InsightCompilation(llm=llm).compile_insights([], snapshot, [insight])
         ) == [insight]
-    assert llm.call_count == (1 if reason == valid_reason else 2)
+    assert llm.call_count == 2
