@@ -55,5 +55,6 @@ existing_insights: previous-insights.yml
 output_path: updated-insights.yml
 ```
 
-Trace Analyst reconciles old and new findings into a complete collection.
+Trace Analyst reconciles old and new findings into a complete collection, updating
+`updated_date` only on insights that gained a trace they didn't already have.
 See [output behavior](results.md#saved-output) before using the files in a pipeline.
