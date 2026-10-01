@@ -89,6 +89,27 @@ class InsightCompilation(Agent):
 
         Leave trace_links empty; the application resolves source links after compilation.
 
+        Assign every insight you return a severity of "low", "medium", or
+        "high", plus a one-sentence severity_reason in plain, direct language
+        describing why it got that bucket. No hedging, no filler, no "this
+        may indicate" -- just the concrete problem and its consequence. Set
+        severity and severity_reason on existing insights too, even if they
+        were not set before; this is the one thing you're allowed to add to
+        an otherwise-unmodified existing insight.
+
+        Use this rubric:
+
+        - high: the agent goes off track, performs harmful or clearly
+        unintended behavior, violates ETHOS.md outright, or is blocked from
+        completing its task. Needs a fix right away.
+
+        - medium: the agent completes its task but wastes tokens or other
+        resources, takes a roundabout path to the result, or hits tool
+        errors it recovers from. Worth fixing, not urgent.
+
+        - low: a minor or cosmetic issue that does not change the outcome
+        for the user. Fix whenever convenient.
+
         Return the list of ranked, validated and merged insights. Include
         existing insights.
         """
