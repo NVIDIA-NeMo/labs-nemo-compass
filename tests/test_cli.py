@@ -3,10 +3,12 @@
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import yaml
 from nooa.unifiedllm import FakeLLMClient
 
 import insight_agent.cli.main as cli
@@ -152,8 +154,9 @@ def test_anthropic_parameters_are_translated_to_native_fields(clean_environment,
     assert native["tool_choice"] == {"type": "auto"}
 
 
+@pytest.mark.parametrize("save_file", [True, False])
 def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
-    clean_environment, tmp_path, monkeypatch, capsys, select_streams
+    clean_environment, tmp_path, monkeypatch, capsys, select_streams, save_file
 ):
     existing = [
         Insight(
@@ -166,7 +169,8 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     existing_path.write_text(json.dumps([item.model_dump() for item in existing]), encoding="utf-8")
     trace_path = tmp_path / "traces.jsonl"
     trace_path.write_text('{"id":"unscored","root_spans":[],"aggregate":{}}', encoding="utf-8")
-    output_path = tmp_path / "results" / "insights.yml"
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("results [review]/insights.yml") if save_file else Path("-")
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=existing))
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key-not-real")
     monkeypatch.setattr(cli, "_build_llm", lambda config, api_key: FakeLLMClient())
@@ -188,13 +192,20 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     compilation.compile_insights.assert_not_awaited()
     assert result == cli.EXIT_OK
     captured = capsys.readouterr()
-    assert output_path.read_text(encoding="utf-8") == captured.out
+    assert yaml.safe_load(captured.out) == [item.model_dump(mode="json") for item in existing]
     assert "No new insights produced from 1 trace." in captured.err
     assert "1 existing insight retained." in captured.err
     assert "Skipped" in captured.err
     assert "Tool issues" in captured.err and "No tool calls" in captured.err
-    assert f"Saved: {output_path}" in captured.err
-    assert load_insights(output_path) == existing
+    if save_file:
+        assert output_path.read_text(encoding="utf-8") == captured.out
+        assert f"Saved: {output_path}" in captured.err
+        _, prompt = captured.err.split("Next: fix an issue")
+        assert str(output_path.resolve()) in prompt
+        assert load_insights(output_path) == existing
+    else:
+        assert "Saved:" not in captured.err
+        assert "Next: fix an issue" not in captured.err
 
 
 def test_code_validation_filters_problems_and_preserves_stream_result(
