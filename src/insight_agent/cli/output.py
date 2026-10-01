@@ -145,8 +145,15 @@ class RunOutput:
                 "Check setup: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )
+        severity_styles = {"high": "bold red", "medium": "bold yellow", "low": "bold cyan"}
         for insight in result.insights:
-            self.console.print(Text("\n" + insight.name, style="bold"))
+            heading = Text("\n")
+            if insight.severity:
+                heading.append(f"[{insight.severity.upper()}] ", style=severity_styles[insight.severity])
+            heading.append(insight.name, style="bold")
+            self.console.print(heading)
+            if insight.severity_reason:
+                self.console.print(Text(f"  {insight.severity_reason}", style="dim"))
             for ref in dict.fromkeys(insight.trace_refs):
                 url = insight.trace_links.get(ref)
                 line = Text(f"  {ref}")

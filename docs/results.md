@@ -13,6 +13,8 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
+  severity: medium
+  severity_reason: Wastes a retry on every bad order ID instead of asking the customer to fix it.
   trace_refs:
     - run-12
     - run-38
@@ -20,6 +22,19 @@ An illustrative entry in `insights.yml`:
     run-12: https://observability.example.com/traces/run-12
     run-38: https://observability.example.com/traces/run-38
 ```
+
+`severity` is one of `low`, `medium`, or `high`, with `severity_reason` giving a short,
+plain-language reason for that bucket:
+
+- **high** — the agent goes off track, behaves harmfully or against its ETHOS.md, or is
+  blocked from completing its task. Fix right away.
+- **medium** — the agent completes its task but burns tokens or other resources, takes a
+  roundabout path, or hits tool errors it recovers from. Worth fixing, not urgent.
+- **low** — a minor or cosmetic issue that doesn't change the outcome for the user. Fix
+  whenever convenient.
+
+Insights saved before this field existed may have `severity` and `severity_reason` unset
+until the next run reconciles them.
 
 Open a trace link to review the supporting behavior before deciding what to change.
 The terminal also shows these URLs, clickable in terminals that support hyperlinks.
@@ -81,7 +96,7 @@ establish that your agent is free of problems.
 ## Saved output
 
 The output is a YAML list with `name`, `description`, `trace_refs`, and optional
-`trace_links` and `updated_date` for each insight.
+`trace_links`, `severity`, `severity_reason` and `updated_date` for each insight.
 Each insight has at least two trace references.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
