@@ -27,6 +27,24 @@ def _structured_result(content: object, output_model: type[ResultT]) -> ResultT:
     return output_model.model_validate(content)
 
 
+def _with_output_contract(
+    messages: list[dict[str, Any]], output_model: type[ResultT]
+) -> list[dict[str, Any]]:
+    schema = json.dumps(output_model.model_json_schema(), ensure_ascii=False)
+    instruction = (
+        "When you finish investigating, return only one complete JSON object matching this "
+        f"schema, with no Markdown or explanation: {schema}"
+    )
+    prompted_messages = [message.copy() for message in messages]
+    if prompted_messages and prompted_messages[0].get("role") == "system":
+        prompted_messages[0]["content"] = (
+            f"{prompted_messages[0].get('content', '').rstrip()}\n\n{instruction}"
+        )
+    else:
+        prompted_messages.insert(0, {"role": "system", "content": instruction})
+    return prompted_messages
+
+
 class CodebaseInvestigation(Agent):
     """Run one structured investigation with confined, read-only repository tools."""
 
@@ -66,6 +84,7 @@ class CodebaseInvestigation(Agent):
     ) -> tuple[ResultT, bool]:
         """Return the structured result and whether a repository tool succeeded."""
 
+        messages = _with_output_contract(messages, output_model)
         used_codebase_tool = False
         for _ in range(self._max_tool_rounds):
             response = await self.llm.acall(

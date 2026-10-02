@@ -55,6 +55,23 @@ def test_investigation_runs_codebase_tools_and_returns_structured_result(tmp_pat
     assert result.accepted is True
     assert used_codebase_tool is True
     assert llm.call_count == 2
+    assert "return only one complete JSON object" in llm.last_messages[0]["content"]
+    assert '"accepted"' in llm.last_messages[0]["content"]
+
+
+def test_investigation_adds_output_contract_when_no_system_message(tmp_path) -> None:
+    llm = FakeLLMClient(scripted_responses=[_response('{"accepted": true}', [])])
+
+    result, _ = asyncio.run(
+        CodebaseInvestigation(tmp_path, llm).investigate(
+            _messages(), _Decision, "Return a decision."
+        )
+    )
+
+    assert result.accepted is True
+    assert llm.last_messages[0]["role"] == "system"
+    assert "return only one complete JSON object" in llm.last_messages[0]["content"]
+    assert llm.last_messages[1] == _messages()[0]
 
 
 def test_investigation_reports_failed_tool_calls(tmp_path) -> None:
