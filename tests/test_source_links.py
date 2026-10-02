@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-from io import StringIO
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -11,10 +9,8 @@ import pytest
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
-from rich.console import Console
 from trace_ingest.source_links import http_source_url
 
-from insight_agent.cli.output import RunOutput, RunResult
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.trace_loaders.fs import FSDataLoader
@@ -89,31 +85,6 @@ def test_links_are_resolved_from_sources_and_existing_artifacts_only(tmp_path):
     assert load_insights(path) == [resolved]
 
 
-@pytest.mark.parametrize("terminal", [False, True])
-def test_terminal_links_and_plain_logs(terminal, monkeypatch):
-    monkeypatch.setenv("TERM", "xterm-256color")
-    stream = StringIO()
-    insight = Insight.model_validate(
-        {
-            "name": "Issue [literal]",
-            "description": "Details",
-            "evidence": [
-                {"trace_id": "a", "url": "https://provider.test/trace/a"},
-                {"trace_id": "b"},
-            ],
-        }
-    )
-    RunOutput(Console(file=stream, force_terminal=terminal, width=120)).report(
-        RunResult(2, [], [insight]), Path("-"), details=True
-    )
-    rendered = stream.getvalue()
-    assert "https://provider.test/trace/a" in rendered
-    assert "Issue [literal]" in rendered and "  Trace b" in rendered
-    assert ("\x1b]8;" in rendered) == terminal
-    if not terminal:
-        assert "\x1b" not in rendered
-
-
 def test_cli_saves_and_prints_loader_links_after_compilation(
     tmp_path, monkeypatch, capsys, select_streams
 ):
@@ -154,7 +125,6 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
     assert (
         cli.main(
             [
-                "--details",
                 "--trace.filesystem.path",
                 str(path),
                 "--output-path",
@@ -173,7 +143,7 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
     }
     assert yaml.safe_load(captured.out) == [saved.model_dump()]
     assert "invented.test" not in captured.out + captured.err
-    assert {item.trace_id: item.url for item in saved.evidence if item.url}["a"] in captured.err
+    assert "file://" not in captured.err
 
 
 def test_span_resolution_handles_nested_multiple_and_unknown_spans():
@@ -327,7 +297,6 @@ def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_str
     assert (
         cli.main(
             [
-                "--details",
                 "--trace.filesystem.path",
                 "unused.jsonl",
                 "--output-path",
@@ -350,69 +319,6 @@ def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_str
         for item in saved.evidence
         if any(span.url for span in item.spans)
     } == {"a": {"tool": "https://provider.test/span"}}
-    assert "Span tool — https://provider.test/span" in captured.err
+    assert "https://provider.test/span" not in captured.err
     assert yaml.safe_load(captured.out) == [saved.model_dump()]
     assert "invented.test" not in captured.out + captured.err
-
-
-@pytest.mark.parametrize(
-    "linked_spans",
-    [[], ["span-one-long-identifier"], ["span-one-long-identifier", "span-two-long-identifier"]],
-)
-def test_report_prefers_span_links_and_falls_back_when_any_are_missing(linked_spans):
-    refs = ["trace-one-long-identifier", "trace-two-long-identifier"]
-    spans = ["span-one-long-identifier", "span-two-long-identifier"]
-    insight = Insight.model_validate(
-        {
-            "name": "Issue",
-            "description": "Details",
-            "evidence": [
-                {
-                    "trace_id": refs[0],
-                    "url": "https://ui.test/trace-one",
-                    "spans": [
-                        {
-                            "span_id": sid,
-                            "url": f"https://ui.test/{sid}" if sid in linked_spans else None,
-                        }
-                        for sid in spans
-                    ],
-                },
-                {"trace_id": refs[1], "url": "https://ui.test/trace-two"},
-            ],
-        }
-    )
-    before = insight.model_dump()
-    stream = StringIO()
-    RunOutput(Console(file=stream, force_terminal=False, width=200)).report(
-        RunResult(2, [], [insight]), Path("-"), details=True
-    )
-    rendered = stream.getvalue()
-    assert "Trace trace-on…" in rendered
-    assert "    ↳ Span span-one…" in rendered
-    assert "    ↳ Span span-two…" in rendered
-    assert ("https://ui.test/trace-one" in rendered) == (len(linked_spans) < 2)
-    assert "Trace trace-tw… — https://ui.test/trace-two" in rendered
-    for sid in spans:
-        if sid in linked_spans:
-            assert f"https://ui.test/{sid}" in rendered
-            assert f"({sid})" not in rendered
-        else:
-            assert f"Span {sid[:8]}…" in rendered
-    assert insight.model_dump() == before
-
-
-def test_short_ids_distinguish_shared_prefixes():
-    from insight_agent.cli.output import _short_ids
-
-    ids = ["01a0c54c-582d-7270", "01a0c54c-582f-7431", "01a0c54d-27b0", "short"]
-    assert _short_ids(ids) == {
-        ids[0]: "01a0c54c-582d…",
-        ids[1]: "01a0c54c-582f…",
-        ids[2]: "01a0c54d…",
-        ids[3]: "short",
-    }
-    assert _short_ids(["abcdefgh", "abcdefghijk"]) == {
-        "abcdefgh": "abcdefgh",
-        "abcdefghijk": "abcdefghi…",
-    }

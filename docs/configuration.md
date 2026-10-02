@@ -15,7 +15,6 @@ in the environment or `.env`.
 | --- | --- |
 | `trace` | Exactly one source; see the [source guides](../README.md#start-here). |
 | `trace.max_traces` | Limit complete traces from a provider or native export. Unsupported for canonical JSONL, ATIF, and Gym rollouts. |
-| `details` | Show all insight descriptions and evidence links. Defaults to `false`; CLI: `--details`. |
 | `output_path` | YAML output file; defaults to `insights.yml`. Use `-` for stdout. |
 | `model`, `api_base`, `max_tokens` | [Inference settings](model-access.md#choose-a-model). |
 | `evidence_streams` | [Evidence streams and their prerequisites](evidence-streams.md). All five are enabled by default. |

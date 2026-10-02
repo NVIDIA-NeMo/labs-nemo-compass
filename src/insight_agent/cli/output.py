@@ -21,7 +21,7 @@ from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
 from insight_agent.insight import Insight
 
 _STREAM_LABELS = {
-    "anomaly-and-patterns": "Patterns",
+    "anomaly-and-patterns": "Anomalies and patterns",
     "tool-issues": "Tool issues",
     "ethos-divergence": "Ethos",
     "eval-failure-patterns": "Evaluation",
@@ -33,7 +33,6 @@ _SKIP_LABELS = {
     "No embedding backend configured": "no embedding backend",
 }
 _LOG_INTERVAL = 10
-_PREVIEW_LIMIT = 5
 
 
 def display_name(name: str) -> str:
@@ -42,18 +41,6 @@ def display_name(name: str) -> str:
 
 def count(value: int, singular: str) -> str:
     return f"{value:,} {singular}{'' if value == 1 else 's'}"
-
-
-def _short_ids(ids: list[str]) -> dict[str, str]:
-    labels = {}
-    for value in ids:
-        length = min(8, len(value))
-        while length < len(value) and any(
-            other != value and other.startswith(value[:length]) for other in ids
-        ):
-            length += 1
-        labels[value] = value[:length] + ("…" if length < len(value) else "")
-    return labels
 
 
 @dataclass
@@ -109,7 +96,7 @@ class RunOutput:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
 
-    def report(self, result: RunResult, output_path: Path, *, details: bool = False) -> None:
+    def report(self, result: RunResult, output_path: Path) -> None:
         previous = {(item.name, item.description) for item in result.existing_insights}
         new_count = sum((item.name, item.description) not in previous for item in result.insights)
         if new_count:
@@ -131,58 +118,16 @@ class RunOutput:
         if retained:
             self.console.print(f"{count(retained, 'existing insight')} retained.")
 
-        hyperlinks = self.console.is_terminal and not self.console.is_dumb_terminal
-
-        def evidence_label(label: str, url: str | None) -> Text:
-            text = Text(label, style=f"link {url}" if url and hyperlinks else "")
-            if url and not hyperlinks:
-                text.append(f" — {url}")
-            return text
-
-        # Keep new findings visible when reconciling a large existing collection.
-        insights = sorted(
-            result.insights, key=lambda item: (item.name, item.description) in previous
-        )
-        visible = insights if details else insights[:_PREVIEW_LIMIT]
-        for insight in visible:
-            self.console.print(Text(f"\n{insight.name}", style="bold"))
-            evidence = {item.trace_id: item for item in insight.evidence}
+        for index, insight in enumerate(result.insights, start=1):
+            self.console.print(Text(f"\n{index}. {insight.name}", style="bold"))
+            trace_count = len({item.trace_id for item in insight.evidence})
             self.console.print(
-                Text(f"  Evidence: {count(len(evidence), 'supporting trace')}", style="dim")
+                Text(f"   Evidence: {count(trace_count, 'supporting trace')}", style="dim")
             )
-            if not details:
-                continue
-            self.console.print(Text(insight.description))
-            trace_labels = _short_ids(list(evidence))
-            for ref in trace_labels:
-                span_urls = {span.span_id: span.url for span in evidence[ref].spans}
-                span_ids = list(span_urls)
-                needs_trace_link = not span_ids or any(not span_urls.get(sid) for sid in span_ids)
-                line = Text("  ")
-                label = f"Trace {trace_labels[ref]}"
-                if needs_trace_link:
-                    line.append_text(evidence_label(label, evidence[ref].url))
-                else:
-                    line.append(label)
-                self.console.print(line, soft_wrap=True)
-                for span_id, span_label in _short_ids(span_ids).items():
-                    span_line = Text("    ↳ ")
-                    span_line.append_text(
-                        evidence_label(f"Span {span_label}", span_urls.get(span_id))
-                    )
-                    self.console.print(span_line, soft_wrap=True)
-        remaining = len(insights) - len(visible)
-        if remaining:
-            self.console.print(f"\n{count(remaining, 'more insight')} in YAML output.")
-
-        if result.trace_count == 0:
-            self.console.print("\nNo traces loaded. Check your source, filters, and time window.")
         self._report_checks(result.evidence)
 
         if result.insights and output_path != Path("-"):
             self.console.print(Text(f"\nSaved: {output_path}"), soft_wrap=True)
-        elif not result.insights and output_path != Path("-"):
-            self.console.print("\nNo output file written.")
 
     def _report_checks(self, evidence: list[EvidenceStreamResult]) -> None:
         if not evidence:
@@ -193,7 +138,7 @@ class RunOutput:
             name = display_name(item.stream_name)
             if item.skip_reason is not None:
                 reason = _SKIP_LABELS.get(item.skip_reason, item.skip_reason)
-                skipped.append(f"{name} - {reason}")
+                skipped.append(f"{name} — {reason}")
                 continue
             detail = (
                 count(len(item.problems), "candidate")
@@ -208,17 +153,17 @@ class RunOutput:
                 name = name[:1].lower() + name[1:]
             completed.append(f"{name} ({detail})")
 
-        self.console.print("\nCoverage", style="bold")
+        self.console.print()
         table = Table.grid(padding=(0, 2))
-        table.add_column(width=10)
+        table.add_column(width=8)
         table.add_column(ratio=1)
-        table.add_row(Text("  Ran:"), Text(", ".join(completed) or "None"))
+        table.add_row(Text("Ran:"), Text(", ".join(completed) or "None"))
         for index, reason in enumerate(skipped):
-            table.add_row(Text("  Skipped:" if index == 0 else ""), Text(reason))
+            table.add_row(Text("Skipped:" if index == 0 else ""), Text(reason))
         self.console.print(table)
         if skipped:
             self.console.print(
-                "  To run skipped checks: "
+                "\nTo run skipped analyses: "
                 "https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )

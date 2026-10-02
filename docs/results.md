@@ -47,45 +47,34 @@ Each trace entry can list relevant `spans` at any nesting depth, with a `span_id
 optional `url`. Braintrust and live LangSmith supply span links; other sources retain
 span IDs. An entry without spans refers to the whole trace.
 
-With `--details`, trace and span IDs are clickable labels; plain-text logs show the
-URLs. Spans appear beneath their trace, with the trace link as a fallback when a span
-has no link. Displayed IDs are shortened but stay distinguishable within their group;
-saved YAML retains complete IDs and links.
-
 ## Terminal report
 
-The default report previews up to five insights, with new insights first. The YAML
-output contains every insight and its complete evidence.
+The terminal lists insight titles, supporting-trace counts, and analysis coverage.
+Open the saved YAML for descriptions and complete trace/span IDs and links.
 
 ```text
-1 insight from 200 traces
+3 insights from 200 traces
 
-Agent calls tools absent from the active catalog
-  Evidence: 3 supporting traces
+1. Agent calls tools absent from the active catalog
+   Evidence: 3 supporting traces
 
-Coverage
-  Ran:      Patterns (5 candidates), tool issues (3 candidates)
-  Skipped:  Ethos - no document
-            Evaluation - no results
-            Sentiment - no embedding backend
-  To run skipped checks: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md
+2. Retries repeat an invalid request
+   Evidence: 8 supporting traces
+
+3. Agent reports success after a failed tool call
+   Evidence: 4 supporting traces
+
+Ran:      Anomalies and patterns (5 candidates), tool issues (3 candidates)
+Skipped:  Ethos — no document
+          Evaluation — no results
+          Sentiment — no embedding backend
+
+To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md
 
 Saved: out/try-next-step/insights.yml
 ```
 
-Coverage lists the checks that ran, their candidate counts and limitations, and why
-other checks were skipped. Disabled checks are omitted. Supporting trace counts do
-not represent a failure rate.
-
-Open the saved YAML to read descriptions and inspect evidence without running
-analysis again. For a detailed terminal report during a run, add `--details`:
-
-```bash
-insight-agent --config config.yaml --details
-```
-
-This displays every insight description and its trace/span links. Set `details: true`
-in YAML to make this the default; `--no-details` overrides it.
+Disabled analyses are omitted. Supporting trace counts do not represent a failure rate.
 
 A **candidate issue** is a problem found during analysis. Further review may merge or
 discard it, so candidate counts can exceed the number of saved insights.
@@ -105,8 +94,8 @@ If no traces were loaded, check your source, filters, and time window first.
 ## No insights were produced
 
 The run may have found no actionable patterns, or its candidates may not have passed
-review. This does not establish that your agent is free of problems. Read the coverage
-section for skipped checks and limitations.
+review. This does not establish that your agent is free of problems. Check the report
+for skipped analyses and limitations.
 
 ## Saved output
 

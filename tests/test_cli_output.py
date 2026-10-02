@@ -50,70 +50,51 @@ def test_default_report_prioritizes_findings_and_keeps_coverage_visible(width):
                 )
             ],
         ],
-        [make_insight()],
+        [
+            make_insight(),
+            make_insight("Retries repeat [invalid] requests"),
+            make_insight("False success"),
+        ],
     )
     RunOutput(Console(file=stream, width=width)).report(result, Path("insights.yml"))
     rendered = stream.getvalue()
-    assert "1 insight from 200 traces" in rendered
-    assert "Evidence: 3 supporting traces" in rendered
-    assert rendered.index("Agent calls") < rendered.index("Coverage") < rendered.index("Saved:")
+    assert "3 insights from 200 traces" in rendered
+    assert rendered.count("Evidence: 3 supporting traces") == 3
+    assert "2. Retries repeat [invalid] requests" in " ".join(rendered.split())
+    assert rendered.index("3. False success") < rendered.index("Ran:") < rendered.index("Saved:")
     normalized = " ".join(rendered.split())
-    assert "Ran: Patterns (5 candidates), tool issues (3 candidates; Missing schemas)" in normalized
     assert (
-        "Skipped: Ethos - no document Evaluation - no results Sentiment - no embedding backend"
+        "Ran: Anomalies and patterns (5 candidates), tool issues (3 candidates; Missing schemas)"
         in normalized
     )
     assert (
-        "To run skipped checks: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md"
+        "Skipped: Ethos — no document Evaluation — no results Sentiment — no embedding backend"
+        in normalized
+    )
+    assert (
+        "To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md"
         in rendered
     )
-    for hidden in ("trace-0", "span-0", "long explanation", "--details", "\x1b"):
+    for hidden in ("trace-0", "span-0", "long explanation", "\x1b"):
         assert hidden not in rendered
     # Keep the setup URL intact for copying; other content wraps to the terminal width.
     assert all(len(line) <= width for line in rendered.splitlines() if "https://" not in line)
 
 
-def test_preview_is_bounded_and_new_insights_come_first_without_changing_result():
-    old = [make_insight(f"Existing issue {i}") for i in range(8)]
-    new = make_insight("New issue")
+def test_report_lists_all_insights_in_order_and_omits_irrelevant_guidance():
+    insights = [make_insight(f"Issue {i}") for i in range(6)]
     result = RunResult(
         200,
         [EvidenceStreamResult(stream_name="tool-issues", problems=(), finding_count=2)],
-        [*old, new],
-        existing_insights=old,
+        insights,
     )
     stream = StringIO()
-    output = RunOutput(Console(file=stream, width=120))
-    output.report(result, Path("insights.yml"))
+    RunOutput(Console(file=stream, width=120)).report(result, Path("-"))
     rendered = stream.getvalue()
-    assert rendered.index("New issue") < rendered.index("Existing issue 0")
-    assert "Existing issue 3" in rendered
-    assert "Existing issue 4" not in rendered
-    assert "4 more insights in YAML output." in rendered
+    assert [line for line in rendered.splitlines() if ". Issue" in line] == [
+        f"{i + 1}. Issue {i}" for i in range(6)
+    ]
     assert "Tool issues (2 findings; no candidates)" in rendered
-    assert "Skipped" not in rendered and "To run skipped checks" not in rendered
-    assert result.insights == [*old, new]
-
-    stream.seek(0)
-    stream.truncate()
-    output.report(result, Path("-"), details=True)
-    rendered = stream.getvalue()
-    assert "Existing issue 7" in rendered
-    assert "long explanation" in rendered and "Span span-0" in rendered
-    assert "more insights" not in rendered and "Saved:" not in rendered
-
-
-def test_no_traces_reports_missing_coverage_and_no_output_file():
-    stream = StringIO()
-    result = RunResult(
-        0,
-        [EvidenceStreamResult(stream_name="tool-issues", problems=(), skip_reason="No tool calls")],
-        [],
-    )
-    RunOutput(Console(file=stream, width=120)).report(result, Path("insights.yml"))
-    rendered = stream.getvalue()
-    assert "Ran:      None" in rendered
-    assert "Skipped:  Tool issues - No tool calls" in rendered
-    assert "No output file written." in rendered
+    assert "Skipped" not in rendered and "To run skipped analyses" not in rendered
     assert "Saved:" not in rendered
-    assert "No traces loaded. Check your source, filters, and time window." in rendered
+    assert result.insights == insights
