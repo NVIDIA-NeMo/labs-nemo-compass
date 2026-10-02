@@ -33,7 +33,8 @@ problems it cannot resolve from the repository. It cannot edit or execute your a
 Set `confidence: true` alongside `code_base` to run an additional review after compilation.
 This review investigates each final insight's behavior, root cause, scope, and implied remediation,
 then assigns `confidence` as `low`, `med`, or `high`. Confidence remains unset when no codebase
-tool call succeeds, and the review does not change severity.
+tool call succeeds or the model cannot produce a valid structured response after retries, and the
+review does not change severity. An unresolved validation response retains the candidate problem.
 
 Confidence review is disabled by default. It makes additional model calls per insight: up to 12
 investigation rounds and a final response. Each insight's context can include up to 100,000

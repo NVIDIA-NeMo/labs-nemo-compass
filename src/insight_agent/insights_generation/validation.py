@@ -78,9 +78,12 @@ class ProblemValidation(CodebaseInvestigation):
         decision, used_codebase_tool = await self.investigate(
             _validation_messages(problem, supporting_traces),
             _SupportDecision,
-            "Stop investigating. Return the supported decision now using only the evidence "
-            "already collected. If that evidence is insufficient, return null.",
+            "Stop investigating. Using the evidence already collected, return only a JSON object "
+            "with a single supported field whose value is true, false, or null. Use null when "
+            "that evidence is insufficient.",
         )
+        if decision is None:
+            return None
         return _validated_support(decision, used_codebase_tool)
 
 

@@ -52,6 +52,7 @@ def test_investigation_runs_codebase_tools_and_returns_structured_result(tmp_pat
         )
     )
 
+    assert result is not None
     assert result.accepted is True
     assert used_codebase_tool is True
     assert llm.call_count == 2
@@ -76,8 +77,85 @@ def test_investigation_reports_failed_tool_calls(tmp_path) -> None:
         )
     )
 
+    assert result is not None
     assert result.accepted is False
     assert used_codebase_tool is False
+
+
+def test_investigation_retries_malformed_json(tmp_path) -> None:
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response("I accept this finding.", []),
+            _response('{"accepted": true}', []),
+        ]
+    )
+
+    result, used_codebase_tool = asyncio.run(
+        CodebaseInvestigation(tmp_path, llm).investigate(
+            _messages(), _Decision, "Return a decision."
+        )
+    )
+
+    assert result == _Decision(accepted=True)
+    assert used_codebase_tool is False
+    assert "Return only one complete JSON object" in llm.last_messages[-1]["content"]
+    assert llm.call_count == 2
+
+
+def test_investigation_retries_json_that_violates_schema(tmp_path) -> None:
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response('{"accepted": "maybe"}', []),
+            _response('{"accepted": false}', []),
+        ]
+    )
+
+    result, _ = asyncio.run(
+        CodebaseInvestigation(tmp_path, llm).investigate(
+            _messages(), _Decision, "Return a decision."
+        )
+    )
+
+    assert result == _Decision(accepted=False)
+    assert llm.call_count == 2
+
+
+def test_investigation_retries_json_with_wrong_root_type(tmp_path) -> None:
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response('["accepted"]', []),
+            _response('{"accepted": true}', []),
+        ]
+    )
+
+    result, _ = asyncio.run(
+        CodebaseInvestigation(tmp_path, llm).investigate(
+            _messages(), _Decision, "Return a decision."
+        )
+    )
+
+    assert result == _Decision(accepted=True)
+    assert llm.call_count == 2
+
+
+def test_investigation_returns_unresolved_after_structured_retries(tmp_path, caplog) -> None:
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response("not json", []),
+            _response('{"accepted": "maybe"}', []),
+        ]
+    )
+
+    result, used_codebase_tool = asyncio.run(
+        CodebaseInvestigation(tmp_path, llm, max_structured_response_attempts=2).investigate(
+            _messages(), _Decision, "Return a decision."
+        )
+    )
+
+    assert result is None
+    assert used_codebase_tool is False
+    assert "treating the investigation as unresolved" in caplog.text
+    assert llm.call_count == 2
 
 
 def test_investigation_forces_structured_result_after_tool_limit(tmp_path) -> None:
@@ -90,6 +168,7 @@ def test_investigation_forces_structured_result_after_tool_limit(tmp_path) -> No
     llm = FakeLLMClient(
         scripted_responses=[
             _response("", [tool_call]),
+            _response("The answer is yes.", []),
             _response('{"accepted": true}', []),
         ]
     )
@@ -100,7 +179,8 @@ def test_investigation_forces_structured_result_after_tool_limit(tmp_path) -> No
         )
     )
 
+    assert result is not None
     assert result.accepted is True
     assert used_codebase_tool is True
-    assert llm.last_messages[-1] == {"role": "user", "content": "Return a decision."}
-    assert llm.call_count == 2
+    assert "Return only one complete JSON object" in llm.last_messages[-1]["content"]
+    assert llm.call_count == 3

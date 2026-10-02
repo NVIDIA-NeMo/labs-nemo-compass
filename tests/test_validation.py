@@ -94,3 +94,28 @@ def test_problem_validation_rejects_code_contradicted_problem(tmp_path) -> None:
 
     assert supported is False
     assert llm.call_count == 2
+
+
+def test_problem_validation_retains_problem_after_malformed_responses(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
+    tool_call = ToolCall(
+        id="read-1",
+        name="read_file",
+        arguments=json.dumps({"path": "agent.py"}),
+    )
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response("", [tool_call]),
+            _response("supported", []),
+            _response("still supported", []),
+            _response("yes", []),
+        ]
+    )
+    validator = ProblemValidation(tmp_path, llm)
+    problem = Problem(description="Requests time out too quickly", supporting_trace_ids=("t1",))
+    trace = Trace(id="t1", root_spans=[], aggregate=TraceAggregate())
+
+    supported = asyncio.run(validator.is_supported(problem, (trace,)))
+
+    assert supported is None
+    assert llm.call_count == 4

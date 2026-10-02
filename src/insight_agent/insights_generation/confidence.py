@@ -65,10 +65,11 @@ class InsightConfidence(CodebaseInvestigation):
         result, used_codebase_tool = await self.investigate(
             _confidence_messages(insight, supporting_traces),
             _Confidence,
-            "Stop investigating. Return the confidence rating now using only the evidence "
-            "already collected.",
+            "Stop investigating. Using the evidence already collected, return only a JSON object "
+            "with a single confidence field whose value is low, med, or high, with no Markdown "
+            "or explanation.",
         )
-        return result if used_codebase_tool else _Confidence(confidence=None)
+        return result if result is not None and used_codebase_tool else _Confidence(confidence=None)
 
 
 __all__ = ["InsightConfidence"]
