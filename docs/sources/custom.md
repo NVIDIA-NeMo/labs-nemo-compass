@@ -4,7 +4,7 @@
 # Analyze traces from another system
 
 Use a coding agent to write and run a conversion script for your trace store.
-The script produces `traces.jsonl`, which Trace Analyst can read directly.
+The script produces `traces.jsonl`, which NeMo Compass can read directly.
 
 ## Choose your input
 
@@ -16,7 +16,7 @@ Start with a small set of completed agent runs. Give your coding agent either:
   and the name of the environment variable holding your API key. Keep the key itself
   in your environment or `.env`.
 
-Select the traces during export or retrieval; the analyst reads the entire converted file.
+Select the traces during export or retrieval; NeMo Compass reads the entire converted file.
 
 ## Ask your coding agent to convert the traces
 
@@ -24,7 +24,7 @@ Give your agent the input details above and this prompt:
 
 ```text
 Write and run a small script to convert my traces into traces.jsonl for
-Trace Analyst: https://github.com/NVIDIA-NeMo/labs-trace-intel
+NeMo Compass: https://github.com/NVIDIA-NeMo/labs-nemo-compass
 Use the export or API access details I provided.
 
 Use its current canonical Trace model and write one complete trace per
@@ -41,13 +41,13 @@ The [canonical format](files.md#canonical-jsonl) and
 [Trace model](../../packages/trace-ingest/src/trace_ingest/models.py) are the conversion references.
 Compare a converted trace with its original before analyzing a larger export.
 
-## Run the analyst
+## Run NeMo Compass
 
 With [uv and Git installed](../../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 [Configure your inference model and key](../model-access.md#choose-a-model),

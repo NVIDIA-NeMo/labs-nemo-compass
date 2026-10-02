@@ -72,7 +72,7 @@ def test_default_report_prioritizes_findings_and_keeps_coverage_visible(width):
         in normalized
     )
     assert (
-        "To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md"
+        "To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md"
         in rendered
     )
     for hidden in ("trace-0", "span-0", "long explanation", "\x1b"):

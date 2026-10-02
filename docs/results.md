@@ -69,7 +69,7 @@ Skipped:  Ethos — no document
           Evaluation — no results
           Sentiment — no embedding backend
 
-To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md
+To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md
 
 Saved: out/try-next-step/insights.yml
 ```

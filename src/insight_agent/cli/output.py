@@ -164,6 +164,6 @@ class RunOutput:
         if skipped:
             self.console.print(
                 "\nTo run skipped analyses: "
-                "https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md",
+                "https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )

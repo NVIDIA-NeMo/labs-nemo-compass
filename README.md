@@ -1,9 +1,9 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Trace Analyst
+# NeMo Compass
 
-Trace Analyst analyzes your agent’s behavior and surfaces actionable insights,
+NeMo Compass analyzes your agent’s behavior and surfaces actionable insights,
 grounded in its execution traces.
 
 Bring traces from your existing tools, and explore each insight through the evidence behind it.
