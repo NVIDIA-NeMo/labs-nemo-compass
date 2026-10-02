@@ -10,7 +10,7 @@ With [uv and Git installed](../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'nemo-compass @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
 ```
 
 Download the [example traces](tau_bench_traces.jsonl) and

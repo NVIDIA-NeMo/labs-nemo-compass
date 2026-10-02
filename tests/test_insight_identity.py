@@ -4,7 +4,7 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_compass.insight import Insight, load_insights
+from insight_agent.insight import Insight, load_insights
 
 
 def test_existing_identity_survives_artifact_round_trip(tmp_path):

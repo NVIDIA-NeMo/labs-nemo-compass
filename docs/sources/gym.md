@@ -14,7 +14,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'nemo-compass @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
 ```
 
 No Gym installation or optional extra is required.

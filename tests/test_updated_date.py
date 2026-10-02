@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 
-from nemo_compass.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from nemo_compass.insight import Insight, TraceEvidence, load_insights
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.insight import Insight, TraceEvidence, load_insights
 
 
 def trace(id):
-    from nemo_compass.traces import Trace
+    from insight_agent.traces import Trace
 
     return Trace(id=id, root_spans=[], aggregate={})
 
@@ -49,7 +49,7 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     compile_insights (given run_timestamp), not by any Python post-processing.
     This proves the CLI layer writes out exactly what compilation returned,
     unchanged, and that it actually passes compile_insights a run_timestamp."""
-    import nemo_compass.cli.main as cli
+    import insight_agent.cli.main as cli
 
     path = tmp_path / "traces.jsonl"
     path.write_text(

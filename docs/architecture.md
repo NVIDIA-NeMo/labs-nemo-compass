@@ -9,17 +9,17 @@ recurring problems. It has three stages: ingestion, evidence discovery, and insi
 Five evidence streams analyze business requirements, user complaints, evaluation results, tool
 behavior, and statistical patterns. They use deterministic checks, learned classifiers, and LLM
 investigation, with each stream implementing the same
-[interface](../src/nemo_compass/evidence_streams/evidence_streams.py): check prerequisites, analyze
+[interface](../src/insight_agent/evidence_streams/evidence_streams.py): check prerequisites, analyze
 the snapshot, and return candidate `Problem` objects containing a description and supporting trace
 IDs. Results can also include analysis artifacts, coverage limitations, and reasons for skipping
 analysis. Partners can run the NeMo Compass pipeline, reuse individual evidence streams or trace loaders.
 
-[Insight compilation](../src/nemo_compass/insights_generation/insight_compilation.py) investigates
+[Insight compilation](../src/insight_agent/insights_generation/insight_compilation.py) investigates
 candidates in their original traces, assesses their impact and whether a developer can fix them,
 merges duplicates across streams and existing insights, and ranks the results. Its instructions
 require each new insight to have support from more than one trace and to merge symptoms only when
 they establish the same problem. These decisions rely on model judgment. Before compilation, an
-optional [code-aware validator](../src/nemo_compass/insights_generation/validation.py) checks
+optional [code-aware validator](../src/insight_agent/insights_generation/validation.py) checks
 candidates against the agent’s source using read-only search and file access. It removes claims
 contradicted by the code and retains unresolved ones. Each resulting insight includes supporting
 trace references for developer review.
@@ -53,9 +53,9 @@ needs to change.
 The stream requires a non-empty requirements document and skips analysis when none is configured. An
 observability platform could store this document at the project level and display findings against
 the relevant requirements. The [ethos-divergence
-implementation](../src/nemo_compass/evidence_streams/ethos_divergence/ethos_divergence_detector.py)
+implementation](../src/insight_agent/evidence_streams/ethos_divergence/ethos_divergence_detector.py)
 defines configuration and evaluation instructions; the shared [issue
-detector](../src/nemo_compass/evidence_streams/issue_detector.py) defines the output descriptions
+detector](../src/insight_agent/evidence_streams/issue_detector.py) defines the output descriptions
 and supporting trace references.
 
 ## User sentiment
@@ -93,10 +93,10 @@ Screening reduces the set of conversations sent for detailed review. The separat
 classification components also allow partners to train and evaluate additional heads for other
 tasks. Running the current stream requires preserved human messages and a compatible embedding
 backend; its results report coverage for traces lacking user text. The [stream
-implementation](../src/nemo_compass/evidence_streams/user_sentiment/stream.py) handles extraction
+implementation](../src/insight_agent/evidence_streams/user_sentiment/stream.py) handles extraction
 and review, with the [embedding
-pipeline](../src/nemo_compass/evidence_streams/user_embedding/embedding.py) and
-[classifier](../src/nemo_compass/evidence_streams/user_sentiment/classifier.py) implemented
+pipeline](../src/insight_agent/evidence_streams/user_embedding/embedding.py) and
+[classifier](../src/insight_agent/evidence_streams/user_sentiment/classifier.py) implemented
 separately.
 
 ## Evaluation failures
@@ -126,7 +126,7 @@ quality and coverage, and the result reports how many traces lack evaluation sig
 Integration requires preserving evaluator names and values during normalization, along with
 execution details that can explain the results. The compact index and trace-retrieval pattern can
 also support other investigations over large traces. The [evaluation-failure
-implementation](../src/nemo_compass/evidence_streams/eval_failure_patterns.py) contains the index,
+implementation](../src/insight_agent/evidence_streams/eval_failure_patterns.py) contains the index,
 bounded retrieval tool, citation postcondition, and investigation instructions. The stream skips
 when no non-null evaluator results are available.
 
@@ -158,7 +158,7 @@ Instrumentation findings can also identify incomplete or inconsistent trace reco
 Partners can run the audit independently of LLM analysis, display evidence cards beside tool spans,
 or pass eligible problems to NeMo Compass. Integration should preserve tool names, arguments,
 results, identifiers, schemas when available, and logical case identity. The [tool-issue
-implementation](../src/nemo_compass/evidence_streams/tool_issues/stream.py) contains normalization,
+implementation](../src/insight_agent/evidence_streams/tool_issues/stream.py) contains normalization,
 detection rules, card construction, and problem promotion. Its artifacts retain both individual
 findings and the recurring groups used for insight generation.
 
@@ -193,7 +193,7 @@ Features, clusters, verdict groups, and an evidence digest remain available for 
 Partners can reuse feature extraction, trajectory grouping, and failure-signature analysis
 separately and configure them for their own trace populations. These methods can surface behavior
 that existing rubrics and complaint classifiers do not cover. The [anomaly-and-pattern
-implementation](../src/nemo_compass/evidence_streams/anomaly_and_patterns/stream.py) contains the
+implementation](../src/insight_agent/evidence_streams/anomaly_and_patterns/stream.py) contains the
 analysis methods and shared-stream adapter. In the full NeMo Compass pipeline, compilation reviews these
 candidates alongside findings from the other streams to determine which problems have sufficient
 support and a practical remedy.

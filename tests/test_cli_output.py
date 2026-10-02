@@ -6,8 +6,8 @@ from pathlib import Path
 
 from rich.console import Console
 
-from nemo_compass.cli.output import RunOutput, RunResult
-from nemo_compass.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.cli.output import RunOutput, RunResult
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
 
 
 def test_report_separates_completed_and_skipped_analyses():

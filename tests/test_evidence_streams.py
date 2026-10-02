@@ -8,18 +8,18 @@ from unittest.mock import Mock
 import pytest
 from nooa.unifiedllm import FakeLLMClient
 
-from nemo_compass.cli.main import _run_evidence_streams
-from nemo_compass.config import EvidenceStreamsConfig
-from nemo_compass.evidence_streams.anomaly_and_patterns.stream import (
+from insight_agent.cli.main import _run_evidence_streams
+from insight_agent.config import EvidenceStreamsConfig
+from insight_agent.evidence_streams.anomaly_and_patterns.stream import (
     AnomalyAndPatternsAnalysis,
     NormalizedCall,
     NormalizedTrace,
     problems_from_analysis,
     run_anomaly_and_patterns,
 )
-from nemo_compass.evidence_streams.tool_issues.stream import build_cards, problems_from_cards
-from nemo_compass.evidence_streams.user_sentiment import stream as sentiment
-from nemo_compass.traces import Trace, TraceAggregate, TraceSnapshot
+from insight_agent.evidence_streams.tool_issues.stream import build_cards, problems_from_cards
+from insight_agent.evidence_streams.user_sentiment import stream as sentiment
+from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
 
 
 @pytest.mark.parametrize("stream,preview_size", [("tool", 3), ("anomaly", 50)])

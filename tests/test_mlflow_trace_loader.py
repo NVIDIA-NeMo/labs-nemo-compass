@@ -13,16 +13,16 @@ import pytest
 from mlflow import MlflowClient
 from mlflow.entities import Feedback
 
-from nemo_compass.evidence_streams.anomaly_and_patterns.stream import to_anomaly_and_patterns_trace
-from nemo_compass.evidence_streams.tool_issues.stream import MISSING, to_tool_issue_trace
-from nemo_compass.trace_loaders.mlflow import (
+from insight_agent.evidence_streams.anomaly_and_patterns.stream import to_anomaly_and_patterns_trace
+from insight_agent.evidence_streams.tool_issues.stream import MISSING, to_tool_issue_trace
+from insight_agent.trace_loaders.mlflow import (
     MLflowFileTraceConfig,
     MLflowFileTraceLoader,
     MLflowTraceConfig,
     MLflowTraceLoader,
     MLflowTraceLoadError,
 )
-from nemo_compass.traces import UNSET, SpanKind
+from insight_agent.traces import UNSET, SpanKind
 
 MLFLOW_TRACE_FIXTURE = Path(__file__).parent / "data" / "mlflow_trace_v3.json"
 

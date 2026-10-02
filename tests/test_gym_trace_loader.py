@@ -16,9 +16,9 @@ from pydantic import ValidationError
 from trace_ingest.loaders import GymTraceConfig, GymTraceLoader, GymTraceLoadError
 from trace_ingest.models import UNSET, SpanKind, TokenCounts
 
-import nemo_compass.cli.main as cli
-from nemo_compass.config import RunConfig, TraceConfig
-from nemo_compass.evidence_streams.tool_issues.stream import to_tool_issue_trace
+import insight_agent.cli.main as cli
+from insight_agent.config import RunConfig, TraceConfig
+from insight_agent.evidence_streams.tool_issues.stream import to_tool_issue_trace
 
 
 def rollout():
@@ -272,7 +272,7 @@ def test_explicit_cli_source_selection(tmp_path):
 def test_complete_cli_runs_real_tool_evidence(tmp_path, monkeypatch, capsys, select_streams):
     path = loader_for(tmp_path, rollout()).config.path
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
-    monkeypatch.setenv("NEMO_COMPASS_API_KEY", "not-real")
+    monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "not-real")
     monkeypatch.setattr(cli, "_build_llm", lambda config, api_key: FakeLLMClient())
     monkeypatch.setattr(cli, "InsightCompilation", lambda llm: compilation)
     output = tmp_path / "insights.yml"

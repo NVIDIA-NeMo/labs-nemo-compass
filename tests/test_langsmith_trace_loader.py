@@ -19,7 +19,7 @@ from test_langsmith_trace_export_file_loader import (
     write_trace_export_file,
 )
 
-from nemo_compass.trace_loaders.langsmith import (
+from insight_agent.trace_loaders.langsmith import (
     LANGSMITH_DEFAULT_MAX_TRACES,
     LangSmithTraceConfig,
     LangSmithTraceExportFileConfig,
@@ -27,7 +27,7 @@ from nemo_compass.trace_loaders.langsmith import (
     LangSmithTraceLoader,
     LangSmithTraceLoadError,
 )
-from nemo_compass.traces import SpanKind
+from insight_agent.traces import SpanKind
 
 PROJECT_ID = UUID("10000000-0000-0000-0000-000000000000")
 TRACE_ID = UUID("20000000-0000-0000-0000-000000000000")

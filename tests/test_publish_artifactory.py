@@ -39,7 +39,9 @@ def test_release_dependency_before_application(tmp_path, monkeypatch, scenario):
             assert ("--clear" in command) == (not builds)
             assert not {"ARTIFACTORY_TOKEN", "UV_PUBLISH_TOKEN", "UV_PUBLISH_PASSWORD"} & env.keys()
             builds.append(name)
-            version = "0.1.0rc1" if name == "nemo-compass" and scenario != "stable-app" else "0.1.0"
+            version = (
+                "0.1.0rc1" if name == "insight-agent" and scenario != "stable-app" else "0.1.0"
+            )
             stem = f"{name.replace('-', '_')}-{version}"
             path = tmp_path / f"{stem}-py3-none-any.whl"
             with zipfile.ZipFile(path, "w") as wheel:
@@ -48,7 +50,7 @@ def test_release_dependency_before_application(tmp_path, monkeypatch, scenario):
                 remote[path.name] = path.read_bytes() if scenario == "reuse" else b"other release"
         else:
             assert command[1] == "publish"
-            assert builds == ["trace-ingest", "nemo-compass"]
+            assert builds == ["trace-ingest", "insight-agent"]
             assert env["UV_PUBLISH_PASSWORD"] == "test-secret"
             assert "UV_PUBLISH_TOKEN" not in env
             path = Path(command[-1])
@@ -77,11 +79,11 @@ def test_release_dependency_before_application(tmp_path, monkeypatch, scenario):
         result = publisher.main(["--dry-run"] if scenario == "dry-run" else [])
         assert result == (2 if scenario in {"conflict", "stable-app"} else 0)
 
-    assert builds == ["trace-ingest", "nemo-compass"]
+    assert builds == ["trace-ingest", "insight-agent"]
     if scenario == "stable-app":
         assert events == []
     elif scenario == "dry-run":
-        assert events == [("dry-run", "trace-ingest"), ("dry-run", "nemo-compass")]
+        assert events == [("dry-run", "trace-ingest"), ("dry-run", "insight-agent")]
     elif scenario == "conflict":
         assert events == [("download", "trace-ingest")]
     else:
@@ -91,7 +93,7 @@ def test_release_dependency_before_application(tmp_path, monkeypatch, scenario):
         expected.extend([("checksums", "trace-ingest"), ("download", "trace-ingest")])
         if scenario != "corrupt":
             expected.extend(
-                (action, "nemo-compass")
+                (action, "insight-agent")
                 for action in ("download", "upload", "checksums", "download")
             )
         assert events == expected

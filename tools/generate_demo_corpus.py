@@ -28,10 +28,10 @@ from typing import Any, TypedDict, Unpack
 
 from pydantic import JsonValue
 
-from nemo_compass.traces import UNSET, Span, SpanKind, ToolCall, Trace, TraceAggregate
+from insight_agent.traces import UNSET, Span, SpanKind, ToolCall, Trace, TraceAggregate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = REPO_ROOT / "src" / "nemo_compass" / "data"
+DATA_DIR = REPO_ROOT / "src" / "insight_agent" / "data"
 
 TIMEOUT = "Error: connection timed out after 30s"
 

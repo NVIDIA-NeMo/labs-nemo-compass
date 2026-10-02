@@ -14,11 +14,11 @@ from pydantic import ValidationError
 from rich.console import Console
 from trace_ingest.source_links import http_source_url
 
-from nemo_compass.cli.output import RunOutput, RunResult
-from nemo_compass.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from nemo_compass.insight import Insight, load_insights, resolve_trace_links
-from nemo_compass.trace_loaders.fs import FSDataLoader
-from nemo_compass.traces import Trace, TraceSnapshot
+from insight_agent.cli.output import RunOutput, RunResult
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.insight import Insight, load_insights, resolve_trace_links
+from insight_agent.trace_loaders.fs import FSDataLoader
+from insight_agent.traces import Trace, TraceSnapshot
 
 
 def trace(id, url=None):
@@ -117,7 +117,7 @@ def test_terminal_links_and_plain_logs(terminal, monkeypatch):
 def test_cli_saves_and_prints_loader_links_after_compilation(
     tmp_path, monkeypatch, capsys, select_streams
 ):
-    import nemo_compass.cli.main as cli
+    import insight_agent.cli.main as cli
 
     path = tmp_path / "traces.jsonl"
     path.write_text(trace("a").model_dump_json() + "\n" + trace("b").model_dump_json())
@@ -176,7 +176,7 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
 
 
 def test_span_resolution_handles_nested_multiple_and_unknown_spans():
-    from nemo_compass.traces import Span, SpanKind
+    from insight_agent.traces import Span, SpanKind
 
     a = trace("a", "https://ui.test/trace")
     a.root_spans = [
@@ -263,7 +263,7 @@ def test_historical_span_links_only_survive_for_absent_traces():
 
 
 def test_span_fields_are_optional_and_jsonl_does_not_accept_provider_links(tmp_path):
-    from nemo_compass.traces import Span, SpanKind
+    from insight_agent.traces import Span, SpanKind
 
     item = trace("a")
     item.root_spans = [Span(id="leaf", kind=SpanKind.TOOL, source_url="https://supplied.test")]
@@ -284,8 +284,8 @@ def test_span_fields_are_optional_and_jsonl_does_not_accept_provider_links(tmp_p
 
 
 def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_streams):
-    from nemo_compass.cli import main as cli
-    from nemo_compass.traces import Span, SpanKind
+    from insight_agent.cli import main as cli
+    from insight_agent.traces import Span, SpanKind
 
     a = trace("a", "https://provider.test/trace")
     a.root_spans = [Span(id="tool", kind=SpanKind.TOOL, source_url="https://provider.test/span")]
@@ -401,7 +401,7 @@ def test_report_prefers_span_links_and_falls_back_when_any_are_missing(linked_sp
 
 
 def test_short_ids_distinguish_shared_prefixes():
-    from nemo_compass.cli.output import _short_ids
+    from insight_agent.cli.output import _short_ids
 
     ids = ["01a0c54c-582d-7270", "01a0c54c-582f-7431", "01a0c54d-27b0", "short"]
     assert _short_ids(ids) == {

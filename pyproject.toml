@@ -6,7 +6,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "nemo-compass"
+name = "insight-agent"
 version = "0.1.0rc1"
 description = "NeMo Compass trace-evidence processing with a canonical JSONL trace contract"
 readme = "README.md"
@@ -64,7 +64,8 @@ dev = [
 ]
 
 [project.scripts]
-nemo-compass = "nemo_compass.cli.main:main"
+nemo-compass = "insight_agent.cli.main:main"
+insight-agent = "insight_agent.cli.main:main"
 
 [tool.uv]
 managed = true
@@ -86,7 +87,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nemo_compass"]
+packages = ["src/insight_agent"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -94,7 +95,7 @@ include = [
     "/NOTICE",
     "/README.md",
     "/pyproject.toml",
-    "/src/nemo_compass",
+    "/src/insight_agent",
     "/third_party",
 ]
 
