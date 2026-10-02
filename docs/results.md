@@ -24,7 +24,6 @@ An illustrative entry in `insights.yml`:
 ```
 
 Open a trace link to review the supporting behavior before deciding what to change.
-The terminal uses trace and span IDs as clickable labels. Plain-text logs show the URLs.
 Each `evidence` entry identifies a supporting trace and optionally its relevant spans.
 URLs are optional and come from the loader, not the inference model.
 
@@ -48,24 +47,40 @@ Each trace entry can list relevant `spans` at any nesting depth, with a `span_id
 optional `url`. Braintrust and live LangSmith supply span links; other sources retain
 span IDs. An entry without spans refers to the whole trace.
 
-The terminal groups spans beneath their trace, one per line. If a span has no link,
-the trace link remains available as a fallback. Displayed IDs are shortened but stay
-distinguishable within their group; saved YAML retains complete IDs and links.
+With `--details`, trace and span IDs are clickable labels; plain-text logs show the
+URLs. Spans appear beneath their trace, with the trace link as a fallback when a span
+has no link. Displayed IDs are shortened but stay distinguishable within their group;
+saved YAML retains complete IDs and links.
 
 ## Terminal report
 
-A run might report:
+The default report previews up to five insights, with new insights first. The YAML
+output contains every insight and its complete evidence.
 
 ```text
-Produced 1 insight from 100 traces.
+Produced 1 insight from 200 traces.
 
-Completed
-  Tool issues          3 candidate issues
-  Evaluation failures  No findings
+1. Agent calls tools that are absent from the active catalog
+   3 supporting traces
 
-Skipped
-  Ethos divergence     No ethos document
+Checks: 2 completed, 3 skipped.
+
+Saved: out/try-next-step/insights.yml
+Add --details for check results and evidence links.
 ```
+
+The coverage line counts completed and skipped checks and flags limited coverage.
+Disabled checks are omitted. Supporting trace counts do not represent a failure rate.
+
+Open the saved YAML to read descriptions and inspect evidence without running
+analysis again. For a detailed terminal report during a run, add `--details`:
+
+```bash
+insight-agent --config config.yaml --details
+```
+
+This displays every insight and its evidence, followed by check results and skipped
+reasons. Set `details: true` in YAML to make this the default; `--no-details` overrides it.
 
 A **candidate issue** is a problem found during analysis. Further review may merge or
 discard it, so candidate counts can exceed the number of saved insights.
@@ -84,9 +99,9 @@ If no traces were loaded, check your source, filters, and time window first.
 
 ## No insights were produced
 
-Read the completed evidence streams and their limitations. The run may have found no actionable
-patterns, or its candidates may not have passed review. This result alone does not
-establish that your agent is free of problems.
+The run may have found no actionable patterns, or its candidates may not have passed
+review. This does not establish that your agent is free of problems. Use `--details`
+during an investigation to see each check and its limitations.
 
 ## Saved output
 

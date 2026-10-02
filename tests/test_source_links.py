@@ -104,7 +104,7 @@ def test_terminal_links_and_plain_logs(terminal, monkeypatch):
         }
     )
     RunOutput(Console(file=stream, force_terminal=terminal, width=120)).report(
-        RunResult(2, [], [insight]), Path("-")
+        RunResult(2, [], [insight]), Path("-"), details=True
     )
     rendered = stream.getvalue()
     assert "https://provider.test/trace/a" in rendered
@@ -154,6 +154,7 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
     assert (
         cli.main(
             [
+                "--details",
                 "--trace.filesystem.path",
                 str(path),
                 "--output-path",
@@ -326,6 +327,7 @@ def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_str
     assert (
         cli.main(
             [
+                "--details",
                 "--trace.filesystem.path",
                 "unused.jsonl",
                 "--output-path",
@@ -383,7 +385,7 @@ def test_report_prefers_span_links_and_falls_back_when_any_are_missing(linked_sp
     before = insight.model_dump()
     stream = StringIO()
     RunOutput(Console(file=stream, force_terminal=False, width=200)).report(
-        RunResult(2, [], [insight]), Path("-")
+        RunResult(2, [], [insight]), Path("-"), details=True
     )
     rendered = stream.getvalue()
     assert "Trace trace-on…" in rendered

@@ -397,7 +397,7 @@ def get_config(argv: Sequence[str] | None = None) -> RunConfig:
 # Pydantic hooks accept parser/group objects and argparse's heterogeneous keyword arguments.
 def _add_common_argument(parser: Any, *args: str, **kwargs: Any) -> Action:  # noqa: ANN401
     if (
-        kwargs.get("dest") not in ("config", "output_path", "model")
+        kwargs.get("dest") not in ("config", "output_path", "model", "details")
         and kwargs.get("action") != "help"
     ):
         kwargs["help"] = SUPPRESS
@@ -435,7 +435,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_insights(config.output_path, rendered)
         if config.output_path == Path("-") or not sys.stdout.isatty():
             print(rendered, end="")
-        output.report(result, config.output_path)
+        output.report(result, config.output_path, details=config.details)
         return EXIT_OK
     except SetupError as error:
         output.console.print(str(error), soft_wrap=True)

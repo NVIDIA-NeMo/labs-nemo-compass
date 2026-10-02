@@ -289,6 +289,10 @@ class RunConfig(BaseSettings):
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
+    details: bool = Field(
+        default=False,
+        description="Show all insights, descriptions, check results, and evidence links",
+    )
     evidence_streams: EvidenceStreamsConfig = Field(
         default_factory=EvidenceStreamsConfig, description="Evidence-stream selection and settings"
     )

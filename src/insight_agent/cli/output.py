@@ -28,6 +28,7 @@ _STREAM_LABELS = {
     "user-sentiment": "User sentiment",
 }
 _LOG_INTERVAL = 10
+_PREVIEW_LIMIT = 5
 
 
 def display_name(name: str) -> str:
@@ -103,7 +104,7 @@ class RunOutput:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
 
-    def report(self, result: RunResult, output_path: Path) -> None:
+    def report(self, result: RunResult, output_path: Path, *, details: bool = False) -> None:
         previous = {(item.name, item.description) for item in result.existing_insights}
         new_count = sum((item.name, item.description) not in previous for item in result.insights)
         if new_count:
@@ -125,11 +126,73 @@ class RunOutput:
         if retained:
             self.console.print(f"{count(retained, 'existing insight')} retained.")
 
-        name_width = (
-            max((len(display_name(item.stream_name)) for item in result.evidence), default=0) + 2
+        hyperlinks = self.console.is_terminal and not self.console.is_dumb_terminal
+
+        def evidence_label(label: str, url: str | None) -> Text:
+            text = Text(label, style=f"link {url}" if url and hyperlinks else "")
+            if url and not hyperlinks:
+                text.append(f" — {url}")
+            return text
+
+        # Keep new findings visible when reconciling a large existing collection.
+        insights = sorted(
+            result.insights, key=lambda item: (item.name, item.description) in previous
         )
+        visible = insights if details else insights[:_PREVIEW_LIMIT]
+        for index, insight in enumerate(visible, start=1):
+            self.console.print(Text(f"\n{index}. {insight.name}", style="bold"))
+            evidence = {item.trace_id: item for item in insight.evidence}
+            self.console.print(Text(f"   {count(len(evidence), 'supporting trace')}", style="dim"))
+            if not details:
+                continue
+            self.console.print(Text(insight.description))
+            trace_labels = _short_ids(list(evidence))
+            for ref in trace_labels:
+                span_urls = {span.span_id: span.url for span in evidence[ref].spans}
+                span_ids = list(span_urls)
+                needs_trace_link = not span_ids or any(not span_urls.get(sid) for sid in span_ids)
+                line = Text("  ")
+                label = f"Trace {trace_labels[ref]}"
+                if needs_trace_link:
+                    line.append_text(evidence_label(label, evidence[ref].url))
+                else:
+                    line.append(label)
+                self.console.print(line, soft_wrap=True)
+                for span_id, span_label in _short_ids(span_ids).items():
+                    span_line = Text("    ↳ ")
+                    span_line.append_text(
+                        evidence_label(f"Span {span_label}", span_urls.get(span_id))
+                    )
+                    self.console.print(span_line, soft_wrap=True)
+        remaining = len(insights) - len(visible)
+        if remaining:
+            self.console.print(f"\n{count(remaining, 'more insight')} in YAML output.")
+
+        if result.trace_count == 0:
+            self.console.print("\nNo traces loaded. Check your source, filters, and time window.")
+        if details:
+            self._report_checks(result.evidence)
+        elif result.evidence:
+            skipped = sum(item.skip_reason is not None for item in result.evidence)
+            limited = sum(
+                bool(item.limitations) and item.skip_reason is None for item in result.evidence
+            )
+            coverage = f"Checks: {len(result.evidence) - skipped} completed, {skipped} skipped"
+            if limited:
+                coverage += f"; {limited} with limited coverage"
+            self.console.print(f"\n{coverage}.")
+
+        if result.insights and output_path != Path("-"):
+            self.console.print(Text(f"\nSaved: {output_path}"), soft_wrap=True)
+        elif not result.insights and output_path != Path("-"):
+            self.console.print("\nNo output file written.")
+        if not details:
+            self.console.print("Add --details for check results and evidence links.", style="dim")
+
+    def _report_checks(self, evidence: list[EvidenceStreamResult]) -> None:
+        name_width = max((len(display_name(item.stream_name)) for item in evidence), default=0) + 2
         for heading, skipped in (("Completed", False), ("Skipped", True)):
-            rows = [item for item in result.evidence if (item.skip_reason is not None) == skipped]
+            rows = [item for item in evidence if (item.skip_reason is not None) == skipped]
             if not rows:
                 continue
             self.console.print(f"\n{heading}", style="bold")
@@ -151,55 +214,9 @@ class RunOutput:
                         detail += "; " + "; ".join(item.limitations)
                 table.add_row(Text(f"  {display_name(item.stream_name)}"), Text(detail))
             self.console.print(table)
-        if any(item.skip_reason is not None for item in result.evidence):
+        if any(item.skip_reason is not None for item in evidence):
             self.console.print(
                 "\nTo disable a check, set its entry in evidence_streams to false.\n"
                 "Check setup: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )
-        hyperlinks = self.console.is_terminal and not self.console.is_dumb_terminal
-
-        def evidence_label(label: str, url: str | None) -> Text:
-            text = Text(label, style=f"link {url}" if url and hyperlinks else "")
-            if url and not hyperlinks:
-                text.append(f" — {url}")
-            return text
-
-        for insight in result.insights:
-            self.console.print(Text("\n" + insight.name, style="bold"))
-            evidence = {item.trace_id: item for item in insight.evidence}
-            trace_labels = _short_ids(list(evidence)[:3])
-            summary = count(len(evidence), "supporting trace")
-            if len(evidence) > len(trace_labels):
-                summary += f" · showing {len(trace_labels)}"
-            self.console.print(summary)
-            for ref in trace_labels:
-                span_urls = {span.span_id: span.url for span in evidence[ref].spans}
-                span_ids = list(span_urls)
-                needs_trace_link = (
-                    not span_ids
-                    or len(span_ids) > 2
-                    or any(not span_urls.get(sid) for sid in span_ids)
-                )
-                line = Text("  ")
-                label = f"Trace {trace_labels[ref]}"
-                if needs_trace_link:
-                    line.append_text(evidence_label(label, evidence[ref].url))
-                else:
-                    line.append(label)
-                self.console.print(line, soft_wrap=True)
-                for span_id, span_label in _short_ids(span_ids[:2]).items():
-                    span_line = Text("    ↳ ")
-                    span_line.append_text(
-                        evidence_label(f"Span {span_label}", span_urls.get(span_id))
-                    )
-                    self.console.print(span_line, soft_wrap=True)
-                if len(span_ids) > 2:
-                    self.console.print(f"    … {count(len(span_ids) - 2, 'more span')}")
-            if len(evidence) > len(trace_labels):
-                destination = "YAML output" if output_path == Path("-") else "saved insights file"
-                self.console.print(
-                    f"{count(len(evidence) - len(trace_labels), 'more trace')} in the {destination}."
-                )
-        if result.insights and output_path != Path("-"):
-            self.console.print(f"\nSaved: {output_path}", soft_wrap=True)

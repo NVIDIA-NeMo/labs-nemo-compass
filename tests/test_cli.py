@@ -153,9 +153,9 @@ def test_anthropic_parameters_are_translated_to_native_fields(clean_environment,
     assert native["tool_choice"] == {"type": "auto"}
 
 
-@pytest.mark.parametrize("save_file", [True, False])
+@pytest.mark.parametrize(("save_file", "details"), [(True, False), (False, True)])
 def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
-    clean_environment, tmp_path, monkeypatch, capsys, select_streams, save_file
+    clean_environment, tmp_path, monkeypatch, capsys, select_streams, save_file, details
 ):
     existing = [
         Insight.model_validate(
@@ -188,6 +188,7 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
 
     result = cli.main(
         [
+            *(["--details"] if details else []),
             "--trace.filesystem.path",
             str(trace_path),
             "--evidence-streams",
@@ -203,20 +204,17 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     assert result == cli.EXIT_OK
     captured = capsys.readouterr()
     assert yaml.safe_load(captured.out) == [item.model_dump() for item in existing]
-    assert "116 supporting traces · showing 3" in captured.err
-    assert [
-        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("  Trace ")
-    ] == [f"https://provider.test/trace/{i}" for i in range(3)]
-    assert [
-        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("    ↳ Span ")
-    ] == [f"https://provider.test/span/{i}/{j}" for i in range(3) for j in range(2)]
-    assert captured.err.count("1 more span") == 3
-    destination = "saved insights file" if save_file else "YAML output"
-    assert f"113 more traces in the {destination}." in captured.err
+    assert "116 supporting traces" in captured.err
+    if details:
+        assert captured.err.count("    ↳ Span ") == 116 * 3
+        assert "https://provider.test/span/115/2" in captured.err
+        assert "Skipped" in captured.err and "No tool calls" in captured.err
+    else:
+        assert "Trace " not in captured.err and "Span " not in captured.err
+        assert "Checks: 0 completed, 1 skipped." in captured.err
+        assert "--details" in captured.err
     assert "No new insights produced from 1 trace." in captured.err
     assert "1 existing insight retained." in captured.err
-    assert "Skipped" in captured.err
-    assert "Tool issues" in captured.err and "No tool calls" in captured.err
     if save_file:
         assert f"Saved: {output_path}" in captured.err
         assert output_path.read_text(encoding="utf-8") == captured.out
@@ -334,4 +332,16 @@ def test_no_candidates_skips_synthesis_and_file_creation(
     assert not output.exists()
     captured = capsys.readouterr()
     assert captured.out == "[]\n"
+    assert "No output file written." in captured.err
+    assert "No traces loaded" not in captured.err
     assert "Saved:" not in captured.err
+
+
+def test_details_is_discoverable_and_can_override_yaml(tmp_path, capsys):
+    assert cli.main(["--help"]) == cli.EXIT_OK
+    assert "--details" in capsys.readouterr().out
+    config = tmp_path / "config.yaml"
+    config.write_text("trace:\n  filesystem:\n    path: traces.jsonl\ndetails: true\n")
+    assert cli.get_config(["--config", str(config)]).details is True
+    assert cli.get_config(["--config", str(config), "--no-details"]).details is False
+    assert cli.get_config(["--trace.filesystem.path", "traces.jsonl"]).details is False
