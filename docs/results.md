@@ -13,6 +13,7 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
+  severity: med
   trace_refs:
     - run-12
     - run-38
@@ -81,8 +82,19 @@ establish that your agent is free of problems.
 ## Saved output
 
 The output is a YAML list with `name`, `description`, `trace_refs`, and optional
-`trace_links` and `updated_date` for each insight.
+`trace_links`, `updated_date`, `severity`, and `confidence` for each insight.
 Each insight has at least two trace references.
+
+`severity` describes observed consequence after recovery: `low`, `med`, or `high`.
+Final compilation assigns it to new insights by default; it is omitted when the
+outcome is unknown. It does not depend on trace count or confidence.
+
+`confidence` describes how well source investigation supports the insight's
+behavior, root cause, scope, and implied remediation. Enable it with
+[`confidence: true` or `--confidence`](configuration.md#one-run-overrides) and
+`code_base`. It is `low`, `med`, or `high`, and is omitted when code could not be
+inspected. Existing insights retain their saved ratings during compilation;
+confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
 didn't already have. It is omitted until that first happens, and an insight that gains

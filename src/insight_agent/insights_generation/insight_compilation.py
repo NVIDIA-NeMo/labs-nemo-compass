@@ -98,6 +98,21 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
+        After merging findings, assign severity to each new insight based on
+        the observed consequence in its supporting traces, including recovery:
+        - high: the agent fails its primary task, silently loses state, or
+          produces materially incorrect user-visible output without recovery.
+        - med: the agent completes the task but incurs unnecessary turns,
+          delay, partial recovery, or degraded output quality.
+        - low: minor inconvenience or cosmetic impact with no meaningful
+          degradation of the completed task.
+        Leave severity=None when the traces do not establish the outcome.
+        Judge consequence independently of occurrence count and confidence;
+        do not reduce a severe consequence because it occurs in few traces.
+        Use the merged supporting traces, not just the failing span. Source
+        code access is not required. Preserve existing insights' ratings.
+        Leave confidence=None on new insights; an optional code review sets it.
+
         Leave trace_links empty; the application resolves source links after compilation.
 
         Return the list of ranked, validated and merged insights. Include

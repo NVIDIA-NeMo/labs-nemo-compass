@@ -6,3 +6,8 @@ trace:
   filesystem:
     path: tau_bench_traces.jsonl
 max_tokens: 16384
+
+# Severity is assigned during final compilation from trace outcomes by default.
+# Enable optional confidence review against your agent's source:
+# code_base: ../my-agent
+# confidence: true

@@ -8,12 +8,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, TypeAdapter
 from trace_ingest.source_links import SourceURL
 
 from insight_agent.traces import TraceSnapshot
+
+Rating = Literal["low", "med", "high"]
 
 
 class Insight(BaseModel):
@@ -37,6 +40,16 @@ class Insight(BaseModel):
         default=None,
         exclude_if=lambda value: value is None,
         description="UTC timestamp of the last time a trace was added to this insight",
+    )
+    confidence: Rating | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="How well the codebase supports this insight's claim; set by --confidence.",
+    )
+    severity: Rating | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Observed consequence after recovery; set during final compilation without code access.",
     )
 
 
