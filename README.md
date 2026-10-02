@@ -15,9 +15,6 @@ For example, an insight might say:
 
 This is a research preview for collaboration and evaluation.
 
-The Python package and CLI are named `insight-agent`. Python integrations use
-`insight_agent`, and model settings use `INSIGHT_AGENT_*` environment variables.
-
 ## Start here
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""NeMo Compass analyzes your agent's behavior and surfaces actionable insights from its traces.
+"""Analyze your agent's behavior and surface actionable insights from its traces.
 
 After configuring your model and credentials, run:
   insight-agent --config config.yaml
