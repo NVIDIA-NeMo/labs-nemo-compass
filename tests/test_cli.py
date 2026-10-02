@@ -203,20 +203,12 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     assert result == cli.EXIT_OK
     captured = capsys.readouterr()
     assert yaml.safe_load(captured.out) == [item.model_dump() for item in existing]
-    assert "116 supporting traces · showing 3" in captured.err
-    assert [
-        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("  Trace ")
-    ] == [f"https://provider.test/trace/{i}" for i in range(3)]
-    assert [
-        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("    ↳ Span ")
-    ] == [f"https://provider.test/span/{i}/{j}" for i in range(3) for j in range(2)]
-    assert captured.err.count("1 more span") == 3
-    destination = "saved insights file" if save_file else "YAML output"
-    assert f"113 more traces in the {destination}." in captured.err
-    assert "No new insights produced from 1 trace." in captured.err
+    assert "116 supporting traces" in captured.err
+    assert "Trace " not in captured.err and "Span " not in captured.err
+    assert "Ran:      None" in captured.err
+    assert "Skipped:  Tool issues — No tool calls" in captured.err
+    assert "No new insights from 1 trace" in captured.err
     assert "1 existing insight retained." in captured.err
-    assert "Skipped" in captured.err
-    assert "Tool issues" in captured.err and "No tool calls" in captured.err
     if save_file:
         assert f"Saved: {output_path}" in captured.err
         assert output_path.read_text(encoding="utf-8") == captured.out

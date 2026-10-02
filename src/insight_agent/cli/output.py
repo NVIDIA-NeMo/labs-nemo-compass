@@ -23,9 +23,14 @@ from insight_agent.insight import Insight
 _STREAM_LABELS = {
     "anomaly-and-patterns": "Anomalies and patterns",
     "tool-issues": "Tool issues",
-    "ethos-divergence": "Ethos divergence",
-    "eval-failure-patterns": "Evaluation failures",
-    "user-sentiment": "User sentiment",
+    "ethos-divergence": "Ethos",
+    "eval-failure-patterns": "Evaluation",
+    "user-sentiment": "Sentiment",
+}
+_SKIP_LABELS = {
+    "No ethos document": "no document",
+    "No evaluator results": "no results",
+    "No embedding backend configured": "no embedding backend",
 }
 _LOG_INTERVAL = 10
 
@@ -36,18 +41,6 @@ def display_name(name: str) -> str:
 
 def count(value: int, singular: str) -> str:
     return f"{value:,} {singular}{'' if value == 1 else 's'}"
-
-
-def _short_ids(ids: list[str]) -> dict[str, str]:
-    labels = {}
-    for value in ids:
-        length = min(8, len(value))
-        while length < len(value) and any(
-            other != value and other.startswith(value[:length]) for other in ids
-        ):
-            length += 1
-        labels[value] = value[:length] + ("…" if length < len(value) else "")
-    return labels
 
 
 @dataclass
@@ -107,10 +100,10 @@ class RunOutput:
         previous = {(item.name, item.description) for item in result.existing_insights}
         new_count = sum((item.name, item.description) not in previous for item in result.insights)
         if new_count:
-            outcome = f"Produced {count(new_count, 'insight')}"
+            outcome = count(new_count, "new insight" if previous else "insight")
         else:
-            outcome = "No new insights produced" if previous else "No insights produced"
-        self.console.print(f"{outcome} from {count(result.trace_count, 'trace')}.")
+            outcome = "No new insights" if previous else "No insights"
+        self.console.print(f"{outcome} from {count(result.trace_count, 'trace')}")
         candidate_count = sum(len(item.problems) for item in result.evidence)
         if not result.insights and candidate_count:
             reason = (
@@ -125,81 +118,52 @@ class RunOutput:
         if retained:
             self.console.print(f"{count(retained, 'existing insight')} retained.")
 
-        name_width = (
-            max((len(display_name(item.stream_name)) for item in result.evidence), default=0) + 2
-        )
-        for heading, skipped in (("Completed", False), ("Skipped", True)):
-            rows = [item for item in result.evidence if (item.skip_reason is not None) == skipped]
-            if not rows:
-                continue
-            self.console.print(f"\n{heading}", style="bold")
-            table = Table.grid(padding=(0, 2))
-            table.add_column(width=name_width)
-            table.add_column(ratio=1)
-            for item in rows:
-                if item.skip_reason is not None:
-                    detail = item.skip_reason
-                else:
-                    detail = (
-                        count(len(item.problems), "candidate issue")
-                        if item.problems
-                        else f"{count(item.finding_count, 'finding')}; no candidate issues"
-                        if item.finding_count
-                        else "No findings"
-                    )
-                    if item.limitations:
-                        detail += "; " + "; ".join(item.limitations)
-                table.add_row(Text(f"  {display_name(item.stream_name)}"), Text(detail))
-            self.console.print(table)
-        if any(item.skip_reason is not None for item in result.evidence):
+        for index, insight in enumerate(result.insights, start=1):
+            self.console.print(Text(f"\n{index}. {insight.name}", style="bold"))
+            trace_count = len({item.trace_id for item in insight.evidence})
             self.console.print(
-                "\nTo disable a check, set its entry in evidence_streams to false.\n"
-                "Check setup: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md",
+                Text(f"   Evidence: {count(trace_count, 'supporting trace')}", style="dim")
+            )
+        self._report_checks(result.evidence)
+
+        if result.insights and output_path != Path("-"):
+            self.console.print(Text(f"\nSaved: {output_path}"), soft_wrap=True)
+
+    def _report_checks(self, evidence: list[EvidenceStreamResult]) -> None:
+        if not evidence:
+            return
+        completed = []
+        skipped = []
+        for item in evidence:
+            name = display_name(item.stream_name)
+            if item.skip_reason is not None:
+                reason = _SKIP_LABELS.get(item.skip_reason, item.skip_reason)
+                skipped.append(f"{name} — {reason}")
+                continue
+            detail = (
+                count(len(item.problems), "candidate")
+                if item.problems
+                else f"{count(item.finding_count, 'finding')}; no candidates"
+                if item.finding_count
+                else "no findings"
+            )
+            if item.limitations:
+                detail += "; " + "; ".join(item.limitations)
+            if completed:
+                name = name[:1].lower() + name[1:]
+            completed.append(f"{name} ({detail})")
+
+        self.console.print()
+        table = Table.grid(padding=(0, 2))
+        table.add_column(width=8)
+        table.add_column(ratio=1)
+        table.add_row(Text("Ran:"), Text(", ".join(completed) or "None"))
+        for index, reason in enumerate(skipped):
+            table.add_row(Text("Skipped:" if index == 0 else ""), Text(reason))
+        self.console.print(table)
+        if skipped:
+            self.console.print(
+                "\nTo run skipped analyses: "
+                "https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )
-        hyperlinks = self.console.is_terminal and not self.console.is_dumb_terminal
-
-        def evidence_label(label: str, url: str | None) -> Text:
-            text = Text(label, style=f"link {url}" if url and hyperlinks else "")
-            if url and not hyperlinks:
-                text.append(f" — {url}")
-            return text
-
-        for insight in result.insights:
-            self.console.print(Text("\n" + insight.name, style="bold"))
-            evidence = {item.trace_id: item for item in insight.evidence}
-            trace_labels = _short_ids(list(evidence)[:3])
-            summary = count(len(evidence), "supporting trace")
-            if len(evidence) > len(trace_labels):
-                summary += f" · showing {len(trace_labels)}"
-            self.console.print(summary)
-            for ref in trace_labels:
-                span_urls = {span.span_id: span.url for span in evidence[ref].spans}
-                span_ids = list(span_urls)
-                needs_trace_link = (
-                    not span_ids
-                    or len(span_ids) > 2
-                    or any(not span_urls.get(sid) for sid in span_ids)
-                )
-                line = Text("  ")
-                label = f"Trace {trace_labels[ref]}"
-                if needs_trace_link:
-                    line.append_text(evidence_label(label, evidence[ref].url))
-                else:
-                    line.append(label)
-                self.console.print(line, soft_wrap=True)
-                for span_id, span_label in _short_ids(span_ids[:2]).items():
-                    span_line = Text("    ↳ ")
-                    span_line.append_text(
-                        evidence_label(f"Span {span_label}", span_urls.get(span_id))
-                    )
-                    self.console.print(span_line, soft_wrap=True)
-                if len(span_ids) > 2:
-                    self.console.print(f"    … {count(len(span_ids) - 2, 'more span')}")
-            if len(evidence) > len(trace_labels):
-                destination = "YAML output" if output_path == Path("-") else "saved insights file"
-                self.console.print(
-                    f"{count(len(evidence) - len(trace_labels), 'more trace')} in the {destination}."
-                )
-        if result.insights and output_path != Path("-"):
-            self.console.print(f"\nSaved: {output_path}", soft_wrap=True)
