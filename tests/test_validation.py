@@ -8,10 +8,10 @@ import json
 
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.insights_generation import validation
-from insight_agent.insights_generation.validation import ProblemValidation
-from insight_agent.traces import Trace, TraceAggregate
+from nemo_compass.evidence_streams.evidence_streams import Problem
+from nemo_compass.insights_generation import validation
+from nemo_compass.insights_generation.validation import ProblemValidation
+from nemo_compass.traces import Trace, TraceAggregate
 
 
 def _response(content: str, tool_calls: list[ToolCall]) -> LLMResponse:

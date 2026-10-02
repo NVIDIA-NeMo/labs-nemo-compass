@@ -61,7 +61,7 @@ CI also installs the application wheel into a clean environment, resolving
 
 ## Publish an internal release candidate
 
-The `insight-agent` version must be a PEP 440 release candidate such as `0.1.0rc1`.
+The `nemo-compass` version must be a PEP 440 release candidate such as `0.1.0rc1`.
 `trace-ingest` can use a stable version. Put the internal Artifactory upload endpoint
 and your access or identity token in the gitignored `.env`:
 
@@ -85,7 +85,7 @@ Publish both wheels to internal Artifactory:
 uv run tools/publish_artifactory.py
 ```
 
-The script builds both wheels and publishes and verifies `trace-ingest` before `insight-agent`.
+The script builds both wheels and publishes and verifies `trace-ingest` before `nemo-compass`.
 For each wheel, it submits SHA-1 and SHA-256 checksums, verifies the downloaded bytes, and prints
 the direct URL to register with nSpect. Matching existing artifacts are reused; different bytes
 require a version bump. It rejects environment files and non-NVIDIA upload endpoints and disables

@@ -8,10 +8,10 @@ import nooa.unifiedllm.unifiedllm as unifiedllm
 from litellm import ModelResponse
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-from insight_agent.cli.main import _build_llm, _run_evidence_streams, get_config
-from insight_agent.config import RunConfig
-from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.traces import Span, SpanKind, Trace, TraceAggregate, TraceSnapshot
+from nemo_compass.cli.main import _build_llm, _run_evidence_streams, get_config
+from nemo_compass.config import RunConfig
+from nemo_compass.evidence_streams.evidence_streams import Problem
+from nemo_compass.traces import Span, SpanKind, Trace, TraceAggregate, TraceSnapshot
 
 
 def _response(name, arguments, call_id):

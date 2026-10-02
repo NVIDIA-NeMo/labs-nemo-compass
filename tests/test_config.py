@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from insight_agent.config import EvidenceStreamsConfig, RunConfig
+from nemo_compass.config import EvidenceStreamsConfig, RunConfig
 
 
 def test_cli_nested_override_preserves_yaml_siblings(tmp_path: Path) -> None:

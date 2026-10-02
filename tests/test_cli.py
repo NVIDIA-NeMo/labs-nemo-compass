@@ -10,13 +10,13 @@ import pytest
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 
-import insight_agent.cli.main as cli
-from insight_agent.config import EvidenceStreamsConfig, RunConfig
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from insight_agent.evidence_streams.registry import EvidenceStreamRegistry
-from insight_agent.insight import Insight, load_insights
-from insight_agent.insights_generation.config import load_dotenv
-from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
+import nemo_compass.cli.main as cli
+from nemo_compass.config import EvidenceStreamsConfig, RunConfig
+from nemo_compass.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from nemo_compass.evidence_streams.registry import EvidenceStreamRegistry
+from nemo_compass.insight import Insight, load_insights
+from nemo_compass.insights_generation.config import load_dotenv
+from nemo_compass.traces import Trace, TraceAggregate, TraceSnapshot
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def test_missing_environment_exits_before_loading_traces(
     assert captured.out == ""
     assert captured.err == (
         "Missing required environment settings:\n"
-        "  INSIGHT_AGENT_API_KEY — API key for the configured model\n"
+        "  NEMO_COMPASS_API_KEY — API key for the configured model\n"
         "  LANGSMITH_API_KEY — API key for LangSmith\n"
         "  EMBEDDING_API_KEY — API key named by evidence_streams.user_sentiment.litellm.api_key_env\n\n"
         "Set these in .env in your working directory (NAME=value),\n"
@@ -67,7 +67,7 @@ def test_langfuse_checks_only_missing_settings_after_cli_overrides(
         "    to_timestamp: 2026-01-02T00:00:00Z\n"
         "evidence_streams:\n  tool_issues: {}\n"
     )
-    monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "private-model-key")
+    monkeypatch.setenv("NEMO_COMPASS_API_KEY", "private-model-key")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "private-project-key")
     args = ["--config", str(config_path)]
     assert cli.main(args) == 2
@@ -115,7 +115,7 @@ def test_model_endpoint_does_not_inherit_another_provider_gateway(
     expected = "https://gateway.example/v1" if model.startswith("openai/") else None
     assert client.call_args.kwargs["api_base"] == expected
 
-    monkeypatch.setenv("INSIGHT_AGENT_API_BASE", "https://explicit.example/v1")
+    monkeypatch.setenv("NEMO_COMPASS_API_BASE", "https://explicit.example/v1")
     cli._build_llm(config, "test-key")
     assert client.call_args.kwargs["api_base"] == "https://explicit.example/v1"
 
@@ -182,7 +182,7 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
     trace_path.write_text('{"id":"unscored","root_spans":[],"aggregate":{}}', encoding="utf-8")
     output_path = tmp_path / "results" / "insights.yml"
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=existing))
-    monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("NEMO_COMPASS_API_KEY", "test-key-not-real")
     monkeypatch.setattr(cli, "_build_llm", lambda config, api_key: FakeLLMClient())
     monkeypatch.setattr(cli, "InsightCompilation", lambda llm: compilation)
 
@@ -314,7 +314,7 @@ def test_no_candidates_skips_synthesis_and_file_creation(
     traces.write_text('{"id":"trace-1","root_spans":[],"aggregate":{}}')
     output = tmp_path / "insights.yml"
     compilation = Mock()
-    monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key")
+    monkeypatch.setenv("NEMO_COMPASS_API_KEY", "test-key")
     monkeypatch.setattr(cli, "InsightCompilation", compilation)
 
     assert (

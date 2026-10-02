@@ -15,29 +15,29 @@ and structured output, and save its settings in `.env`.
 For OpenAI:
 
 ```dotenv
-INSIGHT_AGENT_MODEL=openai/gpt-5.2
-INSIGHT_AGENT_API_KEY=your-openai-api-key
+NEMO_COMPASS_MODEL=openai/gpt-5.2
+NEMO_COMPASS_API_KEY=your-openai-api-key
 ```
 
 For Anthropic:
 
 ```dotenv
-INSIGHT_AGENT_MODEL=anthropic/claude-sonnet-4-6
-INSIGHT_AGENT_API_KEY=your-anthropic-api-key
+NEMO_COMPASS_MODEL=anthropic/claude-sonnet-4-6
+NEMO_COMPASS_API_KEY=your-anthropic-api-key
 ```
 
 These are full LiteLLM model strings: the `openai/` or `anthropic/` prefix selects
 the provider. Direct access uses the provider's default endpoint; remove any old
-`INSIGHT_AGENT_API_BASE` or YAML/CLI `api_base` override when switching providers.
+`NEMO_COMPASS_API_BASE` or YAML/CLI `api_base` override when switching providers.
 For OpenAI directly, also unset inherited `OPENAI_API_BASE` and `OPENAI_BASE_URL`
 gateway overrides.
 
 You can also use an OpenAI-compatible gateway by setting its model name and API base:
 
 ```dotenv
-INSIGHT_AGENT_MODEL=openai/your-model-name
-INSIGHT_AGENT_API_KEY=your-gateway-key
-INSIGHT_AGENT_API_BASE=https://gateway.example.com/v1
+NEMO_COMPASS_MODEL=openai/your-model-name
+NEMO_COMPASS_API_KEY=your-gateway-key
+NEMO_COMPASS_API_BASE=https://gateway.example.com/v1
 ```
 
 Replace the example values with your provider’s settings. Use the documented API base,
@@ -61,20 +61,20 @@ nemo-compass --config config.yaml
 Or select an environment file explicitly with uv:
 
 ```bash
-uv tool run --env-file /path/to/.env --from insight-agent nemo-compass --config config.yaml
+uv tool run --env-file /path/to/.env nemo-compass --config config.yaml
 ```
 
 Exported variables take priority over values in either file.
 Keep credentials out of configuration YAML and source control.
 
 `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are accepted as fallback inference keys,
-in that order. Set `INSIGHT_AGENT_API_KEY` explicitly when credentials for multiple
-providers are present. For OpenRouter, put its key in `INSIGHT_AGENT_API_KEY`;
+in that order. Set `NEMO_COMPASS_API_KEY` explicitly when credentials for multiple
+providers are present. For OpenRouter, put its key in `NEMO_COMPASS_API_KEY`;
 `OPENROUTER_API_KEY` alone does not satisfy the CLI's credential check.
 
 `OPENAI_API_BASE` and `OPENAI_BASE_URL` are fallback endpoint settings, except for
 models using the `anthropic/` or `openrouter/` prefixes. Explicit
-`INSIGHT_AGENT_API_BASE` and YAML/CLI `api_base` overrides still apply to those models.
+`NEMO_COMPASS_API_BASE` and YAML/CLI `api_base` overrides still apply to those models.
 Choose the matching model explicitly. The CLI requires an inference key before loading traces.
 
 Each source guide names the credentials needed for live access.

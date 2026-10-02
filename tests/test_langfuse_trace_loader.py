@@ -16,19 +16,19 @@ from langfuse.api.resources.commons.types.observations_view import ObservationsV
 from langfuse.api.resources.commons.types.trace_with_full_details import TraceWithFullDetails
 from langfuse.api.resources.commons.types.usage import Usage
 
-from insight_agent.config import LangfuseConfig
-from insight_agent.evidence_streams.tool_issues.stream import (
+from nemo_compass.config import LangfuseConfig
+from nemo_compass.evidence_streams.tool_issues.stream import (
     detect_trace,
     to_tool_issue_trace,
 )
-from insight_agent.trace_loaders.langfuse import (
+from nemo_compass.trace_loaders.langfuse import (
     LangfuseFileTraceConfig,
     LangfuseFileTraceLoader,
     LangfuseTraceConfig,
     LangfuseTraceLoader,
     LangfuseTraceLoadError,
 )
-from insight_agent.traces import UNSET, SpanKind
+from nemo_compass.traces import UNSET, SpanKind
 
 START = datetime(2026, 8, 1, 12, tzinfo=timezone.utc)
 END = START + timedelta(hours=1)
@@ -160,7 +160,7 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
 
     from nooa.unifiedllm import FakeLLMClient
 
-    import insight_agent.cli.main as cli
+    import nemo_compass.cli.main as cli
 
     native = provider_trace(
         observations=[
@@ -177,7 +177,7 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
     export_path = tmp_path / "trace.json"
     export_path.write_text(native.json(by_alias=True))
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
-    monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key")
+    monkeypatch.setenv("NEMO_COMPASS_API_KEY", "test-key")
     monkeypatch.setattr(Langfuse, "__init__", lambda *a, **kw: pytest.fail("offline client"))
     monkeypatch.setattr(cli, "_build_llm", lambda *a: FakeLLMClient())
     monkeypatch.setattr(cli, "InsightCompilation", lambda llm: compilation)
@@ -258,7 +258,7 @@ def test_live_order_uses_query_summary_timestamps():
 
 @pytest.mark.parametrize("offline", [False, True])
 def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, offline):
-    from insight_agent.evidence_streams.eval_failure_patterns import _trace_index
+    from nemo_compass.evidence_streams.eval_failure_patterns import _trace_index
 
     scores = [
         {"id": "numeric", "name": "quality", "dataType": "NUMERIC", "value": 0.25},
@@ -324,7 +324,7 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
 def test_export_config_is_exclusive():
     from pydantic import ValidationError
 
-    from insight_agent.config import TraceConfig
+    from nemo_compass.config import TraceConfig
 
     with pytest.raises(ValidationError, match="exactly one loader"):
         TraceConfig.model_validate(

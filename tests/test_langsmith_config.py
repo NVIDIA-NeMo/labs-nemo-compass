@@ -9,14 +9,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-import insight_agent.config as app_config
-from insight_agent.cli.main import _configured_trace_loader
-from insight_agent.config import (
+import nemo_compass.config as app_config
+from nemo_compass.cli.main import _configured_trace_loader
+from nemo_compass.config import (
     EvidenceStreamsConfig,
     RunConfig,
     TraceConfig,
 )
-from insight_agent.trace_loaders.langsmith import (
+from nemo_compass.trace_loaders.langsmith import (
     LANGSMITH_DEFAULT_MAX_TRACES,
     LangSmithTraceConfig,
     LangSmithTraceExportFileConfig,

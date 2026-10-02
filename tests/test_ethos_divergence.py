@@ -8,10 +8,10 @@ import pytest
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
 
-from insight_agent.cli.main import _run_evidence_streams, get_config
-from insight_agent.evidence_streams.ethos_divergence import ethos_divergence_detector as ethos
-from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
+from nemo_compass.cli.main import _run_evidence_streams, get_config
+from nemo_compass.evidence_streams.ethos_divergence import ethos_divergence_detector as ethos
+from nemo_compass.evidence_streams.evidence_streams import Problem
+from nemo_compass.traces import Trace, TraceAggregate, TraceSnapshot
 
 
 def test_ethos_cli_runs_registered_detector(tmp_path, monkeypatch, select_streams):

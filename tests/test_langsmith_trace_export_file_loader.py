@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from insight_agent.trace_loaders.langsmith import (
+from nemo_compass.trace_loaders.langsmith import (
     LangSmithTraceExportFileConfig,
     LangSmithTraceExportFileLoader,
     LangSmithTraceLoadError,
 )
-from insight_agent.traces import SpanKind
+from nemo_compass.traces import SpanKind
 
 
 def trace_export_run_record(

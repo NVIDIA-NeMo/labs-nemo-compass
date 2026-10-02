@@ -3,7 +3,7 @@
 
 import pytest
 
-from insight_agent.config import EvidenceStreamsConfig
+from nemo_compass.config import EvidenceStreamsConfig
 
 
 @pytest.fixture

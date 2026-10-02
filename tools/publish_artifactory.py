@@ -30,7 +30,7 @@ DIST_DIR = REPO_ROOT / "dist"
 ENV_PYPI_URL = "ARTIFACTORY_PYPI_URL"
 ENV_TOKEN = "ARTIFACTORY_TOKEN"
 
-_RELEASE_PACKAGES = ("trace-ingest", "insight-agent")  # Dependency first.
+_RELEASE_PACKAGES = ("trace-ingest", "nemo-compass")  # Dependency first.
 _ALLOWED_HOSTS = {"artifactory.nvidia.com", "urm.nvidia.com"}
 _FORBIDDEN_ENV_FILES = {".env", ".env.local", ".env.example"}
 
@@ -247,10 +247,10 @@ def main(argv: list[str] | None = None) -> int:
         publish_url = _validate_publish_url(_required_setting(ENV_PYPI_URL))
         token = _required_setting(ENV_TOKEN)
         wheels = _build_wheels()
-        application = next(wheel for wheel in wheels if wheel.package_name == "insight-agent")
+        application = next(wheel for wheel in wheels if wheel.package_name == "nemo-compass")
         if re.search(r"rc\d+(?:[.+]|$)", application.version) is None:
             raise PublishConfigurationError(
-                f"refusing to publish non-RC insight-agent version {application.version!r}; "
+                f"refusing to publish non-RC nemo-compass version {application.version!r}; "
                 "set an rcN version"
             )
     except PublishConfigurationError as exc:
