@@ -188,3 +188,14 @@ class RunOutput:
                     self.console.print(span_line, soft_wrap=True)
         if result.insights and output_path != Path("-"):
             self.console.print(f"\nSaved: {output_path}", soft_wrap=True)
+            self.console.print("\nNext: fix an issue", style="bold")
+            self.console.print("In your agent's codebase, paste this into your coding agent:\n")
+            self.console.print(
+                Text(
+                    f'Help me fix one issue in my agent using the insights in "{output_path.resolve()}".\n'
+                    "Check the supporting traces and code first.\n"
+                    "Make the smallest fix and test it against the original behavior.\n"
+                    "Explain what improved and what you could not verify."
+                ),
+                soft_wrap=True,
+            )

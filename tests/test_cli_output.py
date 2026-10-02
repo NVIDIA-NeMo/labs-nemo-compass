@@ -35,3 +35,4 @@ def test_report_separates_completed_and_skipped_analyses():
     assert "Ethos divergence" in skipped and "No ethos document" in skipped
     assert "evidence_streams to false" in skipped and "docs/evidence-streams.md" in skipped
     assert "Saved:" not in skipped
+    assert "Next: fix an issue" not in skipped
