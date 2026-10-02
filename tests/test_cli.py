@@ -211,9 +211,9 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
         assert "Skipped" in captured.err and "No tool calls" in captured.err
     else:
         assert "Trace " not in captured.err and "Span " not in captured.err
-        assert "Checks: 0 completed, 1 skipped." in captured.err
-        assert "--details" in captured.err
-    assert "No new insights produced from 1 trace." in captured.err
+        assert "Ran:      None" in captured.err
+        assert "Skipped:  Tool issues - No tool calls" in captured.err
+    assert "No new insights from 1 trace" in captured.err
     assert "1 existing insight retained." in captured.err
     if save_file:
         assert f"Saved: {output_path}" in captured.err

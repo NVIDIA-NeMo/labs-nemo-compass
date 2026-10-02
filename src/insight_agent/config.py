@@ -291,7 +291,7 @@ class RunConfig(BaseSettings):
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
     details: bool = Field(
         default=False,
-        description="Show all insights, descriptions, check results, and evidence links",
+        description="Show all insight descriptions and evidence links",
     )
     evidence_streams: EvidenceStreamsConfig = Field(
         default_factory=EvidenceStreamsConfig, description="Evidence-stream selection and settings"

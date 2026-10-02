@@ -58,19 +58,24 @@ The default report previews up to five insights, with new insights first. The YA
 output contains every insight and its complete evidence.
 
 ```text
-Produced 1 insight from 200 traces.
+1 insight from 200 traces
 
-1. Agent calls tools that are absent from the active catalog
-   3 supporting traces
+Agent calls tools absent from the active catalog
+  Evidence: 3 supporting traces
 
-Checks: 2 completed, 3 skipped.
+Coverage
+  Ran:      Patterns (5 candidates), tool issues (3 candidates)
+  Skipped:  Ethos - no document
+            Evaluation - no results
+            Sentiment - no embedding backend
+  To run skipped checks: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md
 
 Saved: out/try-next-step/insights.yml
-Add --details for check results and evidence links.
 ```
 
-The coverage line counts completed and skipped checks and flags limited coverage.
-Disabled checks are omitted. Supporting trace counts do not represent a failure rate.
+Coverage lists the checks that ran, their candidate counts and limitations, and why
+other checks were skipped. Disabled checks are omitted. Supporting trace counts do
+not represent a failure rate.
 
 Open the saved YAML to read descriptions and inspect evidence without running
 analysis again. For a detailed terminal report during a run, add `--details`:
@@ -79,8 +84,8 @@ analysis again. For a detailed terminal report during a run, add `--details`:
 insight-agent --config config.yaml --details
 ```
 
-This displays every insight and its evidence, followed by check results and skipped
-reasons. Set `details: true` in YAML to make this the default; `--no-details` overrides it.
+This displays every insight description and its trace/span links. Set `details: true`
+in YAML to make this the default; `--no-details` overrides it.
 
 A **candidate issue** is a problem found during analysis. Further review may merge or
 discard it, so candidate counts can exceed the number of saved insights.
@@ -100,8 +105,8 @@ If no traces were loaded, check your source, filters, and time window first.
 ## No insights were produced
 
 The run may have found no actionable patterns, or its candidates may not have passed
-review. This does not establish that your agent is free of problems. Use `--details`
-during an investigation to see each check and its limitations.
+review. This does not establish that your agent is free of problems. Read the coverage
+section for skipped checks and limitations.
 
 ## Saved output
 
