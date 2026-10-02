@@ -6,11 +6,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 from insight_agent.insight import Insight
-from insight_agent.insights_generation import confidence
 from insight_agent.insights_generation.confidence import InsightConfidence
 from insight_agent.traces import Trace, TraceAggregate
 
@@ -53,8 +51,7 @@ def test_insight_confidence_uses_code_before_deciding(tmp_path) -> None:
     assert llm.call_count == 2
 
 
-def test_insight_confidence_forces_decision_after_tool_limit(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(confidence, "_MAX_TOOL_ROUNDS", 1)
+def test_insight_confidence_can_be_low_after_code_inspection(tmp_path) -> None:
     (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
     tool_call = ToolCall(id="read-1", name="read_file", arguments=json.dumps({"path": "agent.py"}))
     llm = FakeLLMClient(
@@ -72,17 +69,16 @@ def test_insight_confidence_forces_decision_after_tool_limit(tmp_path, monkeypat
     assert llm.call_count == 2
 
 
-@pytest.mark.parametrize("tool_rounds", [None, 1, 12])
-def test_confidence_requires_successful_code_inspection(tmp_path, tool_rounds, monkeypatch) -> None:
+def test_confidence_requires_successful_code_inspection(tmp_path) -> None:
     tool_call = ToolCall(
         id="missing", name="read_file", arguments=json.dumps({"path": "missing.py"})
     )
-    responses = []
-    if tool_rounds is not None:
-        monkeypatch.setattr(confidence, "_MAX_TOOL_ROUNDS", tool_rounds)
-        responses.extend(_response("", [tool_call]) for _ in range(tool_rounds))
-    responses.append(_response('{"confidence": "high"}', []))
-    llm = FakeLLMClient(scripted_responses=responses)
+    llm = FakeLLMClient(
+        scripted_responses=[
+            _response("", [tool_call]),
+            _response('{"confidence": "high"}', []),
+        ]
+    )
 
     result = asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), ()))
 

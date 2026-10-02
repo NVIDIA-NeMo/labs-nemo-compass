@@ -30,7 +30,9 @@ occurrence count.
 When `confidence: true` or `--confidence` is also enabled, a [second code-aware
 review](../src/insight_agent/insights_generation/confidence.py) runs after compilation. It evaluates
 each final insight’s behavior, root cause, scope, and implied remediation, assigning confidence
-without changing severity.
+without changing severity. Validation and confidence use the same read-only investigation engine,
+but retain separate decision contracts because they operate on different artifacts at different
+pipeline stages.
 
 ![Architecture overview: a Trace loaders group contains LangSmith, Langfuse, Braintrust, MLflow, and Other, all feeding a normalized snapshot. An Evidence streams group contains the five detectors, which feed candidate problems through optional code validation and insight compilation to ranked insights.](assets/architecture/overview.png)
 

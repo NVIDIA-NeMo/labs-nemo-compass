@@ -5,20 +5,15 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
-from nooa import Agent
 from nooa.agentdoc import truncating_pformat
-from nooa.unifiedllm import Tool, ToolCall, UnifiedLLM, create_tool_from_callable
 from pydantic import BaseModel, ConfigDict
 
 from insight_agent.insight import Insight, Rating
-from insight_agent.insights_generation.codebase import CodebaseTools
+from insight_agent.insights_generation.investigation import CodebaseInvestigation
 from insight_agent.traces import Trace
 
-_MAX_TOOL_ROUNDS = 12
 _MAX_TRACE_CONTEXT_CHARS = 100_000
 _SYSTEM_PROMPT = """Rate exactly one Insight, derived from an AI agent's runtime traces, on
 confidence. Use the codebase tools to locate the root cause: the prompt, config,
@@ -39,14 +34,6 @@ class _Confidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     confidence: Rating | None
-
-
-def _confidence_rating(content: object) -> _Confidence:
-    if isinstance(content, str):
-        return _Confidence.model_validate_json(content)
-    if isinstance(content, _Confidence):
-        return content
-    return _Confidence.model_validate(content)
 
 
 def _confidence_messages(
@@ -71,67 +58,16 @@ def _confidence_messages(
     ]
 
 
-class InsightConfidence(Agent):
+class InsightConfidence(CodebaseInvestigation):
     """Rate compiled Insights for confidence using confined, read-only codebase access."""
 
-    def __init__(self, code_base_path: Path, llm: UnifiedLLM) -> None:
-        super().__init__(llm=llm)
-        codebase = CodebaseTools(code_base_path)
-        self._tools: list[Tool] = [
-            create_tool_from_callable(codebase.list_files),
-            create_tool_from_callable(codebase.search_code),
-            create_tool_from_callable(codebase.read_file),
-        ]
-        self._tools_by_name = {tool.name: tool for tool in self._tools}
-
-    def _execute_tool_call(self, tool_call: ToolCall) -> tuple[Any, bool]:
-        tool = self._tools_by_name.get(tool_call.name)
-        if tool is None:
-            return {"error": f"unknown tool: {tool_call.name}"}, False
-
-        try:
-            arguments = json.loads(tool_call.arguments)
-            return tool.callable(**arguments), True
-        except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            return {"error": str(exc)}, False
-
-    async def _final_confidence(self, messages: list[dict[str, Any]]) -> _Confidence:
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "Stop investigating. Return the confidence rating now using "
-                    "only the evidence already collected."
-                ),
-            }
-        )
-        response = await self.llm.acall(messages, output_model=_Confidence)
-        return _confidence_rating(response.content)
-
     async def rate(self, insight: Insight, supporting_traces: tuple[Trace, ...]) -> _Confidence:
-        messages = _confidence_messages(insight, supporting_traces)
-        used_codebase_tool = False
-
-        for _ in range(_MAX_TOOL_ROUNDS):
-            response = await self.llm.acall(messages, tools=self._tools, output_model=_Confidence)
-            if response.tool_calls:
-                messages.append(response.assistant_message)
-                for tool_call in response.tool_calls:
-                    result, succeeded = self._execute_tool_call(tool_call)
-                    used_codebase_tool |= succeeded
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps(result, ensure_ascii=False),
-                        }
-                    )
-                continue
-
-            result = _confidence_rating(response.content)
-            return result if used_codebase_tool else _Confidence(confidence=None)
-
-        result = await self._final_confidence(messages)
+        result, used_codebase_tool = await self.investigate(
+            _confidence_messages(insight, supporting_traces),
+            _Confidence,
+            "Stop investigating. Return the confidence rating now using only the evidence "
+            "already collected.",
+        )
         return result if used_codebase_tool else _Confidence(confidence=None)
 
 
