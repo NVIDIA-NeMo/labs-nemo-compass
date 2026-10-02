@@ -1,9 +1,9 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Trace Analyst architecture
+# NeMo Compass architecture
 
-Trace Analyst analyzes recorded agent executions from production and evaluation runs to identify
+NeMo Compass analyzes recorded agent executions from production and evaluation runs to identify
 recurring problems. It has three stages: ingestion, evidence discovery, and insight compilation.
 
 Five evidence streams analyze business requirements, user complaints, evaluation results, tool
@@ -12,7 +12,7 @@ investigation, with each stream implementing the same
 [interface](../src/insight_agent/evidence_streams/evidence_streams.py): check prerequisites, analyze
 the snapshot, and return candidate `Problem` objects containing a description and supporting trace
 IDs. Results can also include analysis artifacts, coverage limitations, and reasons for skipping
-analysis. Partners can run the complete analyst, reuse individual evidence streams or trace loaders.
+analysis. Partners can run the NeMo Compass pipeline, reuse individual evidence streams or trace loaders.
 
 [Insight compilation](../src/insight_agent/insights_generation/insight_compilation.py) investigates
 candidates in their original traces, assesses their impact and whether a developer can fix them,
@@ -156,7 +156,7 @@ surrounding execution to assess impact and recovery before promoting the finding
 Instrumentation findings can also identify incomplete or inconsistent trace records.
 
 Partners can run the audit independently of LLM analysis, display evidence cards beside tool spans,
-or pass eligible problems to the analyst. Integration should preserve tool names, arguments,
+or pass eligible problems to NeMo Compass. Integration should preserve tool names, arguments,
 results, identifiers, schemas when available, and logical case identity. The [tool-issue
 implementation](../src/insight_agent/evidence_streams/tool_issues/stream.py) contains normalization,
 detection rules, card construction, and problem promotion. Its artifacts retain both individual
@@ -194,7 +194,7 @@ Partners can reuse feature extraction, trajectory grouping, and failure-signatur
 separately and configure them for their own trace populations. These methods can surface behavior
 that existing rubrics and complaint classifiers do not cover. The [anomaly-and-pattern
 implementation](../src/insight_agent/evidence_streams/anomaly_and_patterns/stream.py) contains the
-analysis methods and shared-stream adapter. In the full analyst, compilation reviews these
+analysis methods and shared-stream adapter. In the full NeMo Compass pipeline, compilation reviews these
 candidates alongside findings from the other streams to determine which problems have sufficient
 support and a practical remedy.
 

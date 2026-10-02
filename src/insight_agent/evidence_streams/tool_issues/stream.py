@@ -589,7 +589,7 @@ class ToolIssueCard(BaseModel):
 def build_cards(
     findings: Iterable[Mapping[str, Any]], *, minimum_independent_cases: int = CARD_MINIMUM_CASES
 ) -> list[ToolIssueCard]:
-    """Promote recurring findings into compact Analyst-facing evidence cards."""
+    """Promote recurring findings into compact evidence cards for NeMo Compass."""
 
     groups: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for finding in findings:

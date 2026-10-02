@@ -12,7 +12,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI with ML
 
 ```bash
 uv tool install \
-  'insight-agent[mlflow] @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent[mlflow] @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
 ```
 
 [Configure your inference model and key](../model-access.md#choose-a-model).
@@ -37,7 +37,7 @@ trace:
 ```
 
 ```bash
-insight-agent --config config.yaml
+nemo-compass --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)

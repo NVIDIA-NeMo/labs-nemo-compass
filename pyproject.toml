@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 [project]
 name = "insight-agent"
 version = "0.1.0rc1"
-description = "Insights Analyst trace-evidence processing with a canonical JSONL trace contract"
+description = "NeMo Compass trace-evidence processing with a canonical JSONL trace contract"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = "Apache-2.0"
@@ -21,7 +21,7 @@ license-files = [
     "third_party/NOTICES.txt",
     "third_party/license_texts/*.txt",
 ]
-authors = [{ name = "Insight Agent contributors" }]
+authors = [{ name = "NeMo Compass contributors" }]
 keywords = ["agent-traces", "evaluation", "anomaly-detection", "tool-use"]
 
 dependencies = [
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/NVIDIA/nemo-platform-insights-preview"
+Repository = "https://github.com/NVIDIA-NeMo/labs-compass"
 
 [project.optional-dependencies]
 # Source adapters only. Filesystem users do not install or import provider SDKs.
@@ -64,6 +64,7 @@ dev = [
 ]
 
 [project.scripts]
+nemo-compass = "insight_agent.cli.main:main"
 insight-agent = "insight_agent.cli.main:main"
 
 [tool.uv]

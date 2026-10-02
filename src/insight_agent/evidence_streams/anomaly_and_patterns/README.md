@@ -36,10 +36,10 @@ remains available in `AnomalyAndPatternsArtifacts`.
 ## Run it
 
 ```bash
-uv run insight-agent --config trace-analyst-config.yaml
+uv run nemo-compass --config compass-config.yaml
 ```
 
-Include `evidence_streams.anomaly_and_patterns` in `trace-analyst-config.yaml` and set the
+Include `evidence_streams.anomaly_and_patterns` in `compass-config.yaml` and set the
 other stream keys to `false` for an anomaly-only run.
 
 The CLI writes `out/anomaly_and_patterns/digest.md`, extracted features, anomalies, trajectory and verdict groups,

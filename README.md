@@ -1,9 +1,9 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Trace Analyst
+# NeMo Compass
 
-Trace Analyst analyzes your agent’s behavior and surfaces actionable insights,
+NeMo Compass analyzes your agent’s behavior and surfaces actionable insights,
 grounded in its execution traces.
 
 Bring traces from your existing tools, and explore each insight through the evidence behind it.
@@ -14,6 +14,11 @@ For example, an insight might say:
 > the agent sends it again without correcting it. Seen in traces `run-12` and `run-38`.
 
 This is a research preview for collaboration and evaluation.
+
+NeMo Compass was previously called Trace Analyst / Insight Agent. The CLI is
+`nemo-compass`; the `insight-agent` command remains available for existing scripts.
+The Python distribution (`insight-agent`), import namespace (`insight_agent`),
+and `INSIGHT_AGENT_*` environment variables retain their existing names for compatibility.
 
 ## Start here
 
@@ -32,7 +37,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
 | JSONL or ATIF files | [Trace files](docs/sources/files.md) |
 | Another trace store | [Convert your traces](docs/sources/custom.md) |
 
-If `insight-agent` is not found after installation, run `uv tool update-shell`
+If `nemo-compass` is not found after installation, run `uv tool update-shell`
 and restart your terminal.
 
 ## After your first run

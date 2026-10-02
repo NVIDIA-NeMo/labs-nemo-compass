@@ -285,7 +285,7 @@ class RunConfig(BaseSettings):
     config: Path | None = Field(
         default=None,
         exclude=True,
-        description="Optional YAML Analyst configuration",
+        description="Optional YAML NeMo Compass configuration",
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")

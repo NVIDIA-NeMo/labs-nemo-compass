@@ -3,12 +3,12 @@
 
 # Data and model access
 
-Trace Analyst needs an inference model to investigate traces and write insights.
+NeMo Compass needs an inference model to investigate traces and write insights.
 Its API key is separate from your Braintrust, LangSmith, Langfuse, MLflow, or Intake credentials.
 
 ## Choose a model
 
-Trace Analyst uses the LiteLLM library to connect to supported inference providers,
+NeMo Compass uses the LiteLLM library to connect to supported inference providers,
 including OpenAI and Anthropic. Choose a model that supports tool calling
 and structured output, and save its settings in `.env`.
 
@@ -55,13 +55,13 @@ You can also set `model` and `api_base` in YAML or override them on the CLI.
 Keep `.env` in the folder where you run the command to load it automatically:
 
 ```bash
-insight-agent --config config.yaml
+nemo-compass --config config.yaml
 ```
 
 Or select an environment file explicitly with uv:
 
 ```bash
-uv tool run --env-file /path/to/.env insight-agent --config config.yaml
+uv tool run --env-file /path/to/.env --from insight-agent nemo-compass --config config.yaml
 ```
 
 Exported variables take priority over values in either file.
@@ -86,7 +86,7 @@ Return to your [source guide](../README.md#start-here) to finish setup.
 
 | When you use… | Data access |
 | --- | --- |
-| A live trace source | Trace Analyst reads traces and recorded evaluation signals from that service. |
+| A live trace source | NeMo Compass reads traces and recorded evaluation signals from that service. |
 | Model-based analysis | Trace content, evaluation signals, and candidate findings may be sent to your configured inference provider. |
 | An ethos document | Its contents are included in model-based analysis. |
 | Code validation | Selected source excerpts are sent to the inference provider. The validator has read-only file tools. |
