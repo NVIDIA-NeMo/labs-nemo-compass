@@ -68,7 +68,9 @@ class FSDataLoader:
                         continue
                     trace = _parse_trace(raw, path=self.path, line_number=line_number)
                     trace.source_url = file_source_url(self.path, line_number)
-                    call_count += sum(span.kind is SpanKind.TOOL for span in _spans(trace))
+                    for span in _spans(trace):
+                        span.source_url = None
+                        call_count += span.kind is SpanKind.TOOL
                     cases.add(str(trace.attributes.get("logical_case_id") or trace.id))
                     yield trace
 

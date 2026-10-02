@@ -38,6 +38,18 @@ def count(value: int, singular: str) -> str:
     return f"{value:,} {singular}{'' if value == 1 else 's'}"
 
 
+def _short_ids(ids: list[str]) -> dict[str, str]:
+    labels = {}
+    for value in ids:
+        length = min(8, len(value))
+        while length < len(value) and any(
+            other != value and other.startswith(value[:length]) for other in ids
+        ):
+            length += 1
+        labels[value] = value[:length] + ("…" if length < len(value) else "")
+    return labels
+
+
 @dataclass
 class RunResult:
     trace_count: int
@@ -145,14 +157,34 @@ class RunOutput:
                 "Check setup: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/evidence-streams.md",
                 soft_wrap=True,
             )
+        hyperlinks = self.console.is_terminal and not self.console.is_dumb_terminal
+
+        def evidence_label(label: str, url: str | None) -> Text:
+            text = Text(label, style=f"link {url}" if url and hyperlinks else "")
+            if url and not hyperlinks:
+                text.append(f" — {url}")
+            return text
+
         for insight in result.insights:
             self.console.print(Text("\n" + insight.name, style="bold"))
-            for ref in dict.fromkeys(insight.trace_refs):
-                url = insight.trace_links.get(ref)
-                line = Text(f"  {ref}")
-                if url:
-                    line.append(" — ")
-                    line.append(url, style=f"link {url}")
+            evidence = {item.trace_id: item for item in insight.evidence}
+            trace_labels = _short_ids(list(evidence))
+            for ref in trace_labels:
+                span_urls = {span.span_id: span.url for span in evidence[ref].spans}
+                span_ids = list(span_urls)
+                needs_trace_link = not span_ids or any(not span_urls.get(sid) for sid in span_ids)
+                line = Text("  ")
+                label = f"Trace {trace_labels[ref]}"
+                if needs_trace_link:
+                    line.append_text(evidence_label(label, evidence[ref].url))
+                else:
+                    line.append(label)
                 self.console.print(line, soft_wrap=True)
+                for span_id, span_label in _short_ids(span_ids).items():
+                    span_line = Text("    ↳ ")
+                    span_line.append_text(
+                        evidence_label(f"Span {span_label}", span_urls.get(span_id))
+                    )
+                    self.console.print(span_line, soft_wrap=True)
         if result.insights and output_path != Path("-"):
             self.console.print(f"\nSaved: {output_path}", soft_wrap=True)

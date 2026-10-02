@@ -194,20 +194,25 @@ class BraintrustTraceLoader:
                     or "https://www.braintrust.dev"
                 )
                 if org_name and app_url:
-                    root_pointer = trace.root_spans[0].attributes["source_pointer"]
-                    assert isinstance(root_pointer, dict)
-                    query = urlencode(
-                        {
-                            "object_type": "project_logs"
-                            if self.config.project_id
-                            else "experiment",
-                            "object_id": self.config.project_id or self.config.experiment_id,
-                            "id": root_pointer["row_id"],
-                        }
-                    )
-                    trace.source_url = (
-                        f"{app_url.rstrip('/')}/app/{quote(org_name, safe='')}/object?{query}"
-                    )
+                    pending = list(trace.root_spans)
+                    while pending:
+                        span = pending.pop()
+                        pending.extend(span.children)
+                        span_pointer = span.attributes["source_pointer"]
+                        assert isinstance(span_pointer, dict)
+                        query = urlencode(
+                            {
+                                "object_type": "project_logs"
+                                if self.config.project_id
+                                else "experiment",
+                                "object_id": self.config.project_id or self.config.experiment_id,
+                                "id": span_pointer["row_id"],
+                            }
+                        )
+                        span.source_url = (
+                            f"{app_url.rstrip('/')}/app/{quote(org_name, safe='')}/object?{query}"
+                        )
+                    trace.source_url = trace.root_spans[0].source_url
                 yield trace
 
         return TraceSnapshot(traces())

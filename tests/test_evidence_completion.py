@@ -4,17 +4,20 @@
 import asyncio
 import inspect
 import json
+from datetime import datetime, timezone
 
 import pytest
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-from insight_agent.insight import Insight
+from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
 from insight_agent.insights_generation.insight_compilation import (
     EvidenceCompletion,
     EvidenceDecision,
     InsightCompilation,
 )
 from insight_agent.traces import UNSET, Span, SpanKind, Trace, TraceAggregate, TraceSnapshot
+
+RUN_TIMESTAMP = datetime(2026, 10, 2, tzinfo=timezone.utc)
 
 
 def trace(trace_id, stage="enrich", output='{"title":"unfinished'):
@@ -53,7 +56,17 @@ def completion_case():
         id="saved",
         name="Truncated enrich JSON",
         description="Original claim",
-        trace_refs=["seed", "historical"],
+        evidence=[
+            TraceEvidence(
+                trace_id="seed",
+                spans=[SpanEvidence(span_id="seed-span", url="https://example.com/seed-span")],
+            ),
+            TraceEvidence(
+                trace_id="historical",
+                url="https://example.com/historical",
+                spans=[SpanEvidence(span_id="historical-span")],
+            ),
+        ],
     )
     checks = [
         (positive, "match"),
@@ -107,16 +120,29 @@ def test_invalid_completion_retains_citations_and_reports_failure(completion_cas
     with pytest.warns(
         UserWarning, match="(?s)The evidence scan did not complete.*added no new references"
     ):
-        result = completion.apply(snapshot)
+        result = completion.apply(snapshot, RUN_TIMESTAMP)
     assert result == insight
 
 
-def test_already_complete_claim_gains_no_refs(completion_case):
+@pytest.mark.parametrize("updated_date", [None, datetime(2026, 9, 29, tzinfo=timezone.utc)])
+def test_already_complete_claim_gains_no_traces(completion_case, updated_date):
     insight, checks, snapshot = completion_case
-    insight.trace_refs.append("additional")
+    insight.updated_date = updated_date
+    insight.evidence.append(TraceEvidence(trace_id="additional"))
     completion = EvidenceCompletion(insight=insight, predicate=truncated_enrich, checks=checks)
     with pytest.warns(UserWarning, match="1 of 6 traces"):
-        assert completion.apply(snapshot) == insight
+        result = completion.apply(snapshot, RUN_TIMESTAMP)
+    assert result == insight.model_copy(
+        update={
+            "evidence": [
+                *insight.evidence[:2],
+                TraceEvidence(
+                    trace_id="additional", spans=[SpanEvidence(span_id="additional-span")]
+                ),
+            ]
+        }
+    )
+    assert insight.evidence[-1].spans == []
 
 
 def response(name, arguments, call_id):
@@ -188,9 +214,21 @@ def test_invalid_return_can_be_fixed_in_same_python_session(
         ]
     )
     with pytest.warns(UserWarning, match="1 of 6 traces"):
-        result = asyncio.run(InsightCompilation(llm=llm).compile_insights([], snapshot, [insight]))
+        result = asyncio.run(
+            InsightCompilation(llm=llm).compile_insights([], snapshot, [insight], RUN_TIMESTAMP)
+        )
     assert result == [
-        insight.model_copy(update={"trace_refs": ["seed", "historical", "additional"]})
+        insight.model_copy(
+            update={
+                "evidence": [
+                    *insight.evidence,
+                    TraceEvidence(
+                        trace_id="additional", spans=[SpanEvidence(span_id="additional-span")]
+                    ),
+                ],
+                "updated_date": RUN_TIMESTAMP,
+            }
+        )
     ]
     assert llm.call_count == 3
     assert diagnostic in str(llm.last_messages)
@@ -216,6 +254,6 @@ def test_skipping_the_scan_requires_nonblank_reason(completion_case):
     )
     with pytest.warns(UserWarning, match=valid_reason):
         assert asyncio.run(
-            InsightCompilation(llm=llm).compile_insights([], snapshot, [insight])
+            InsightCompilation(llm=llm).compile_insights([], snapshot, [insight], RUN_TIMESTAMP)
         ) == [insight]
     assert llm.call_count == 2

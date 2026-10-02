@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable
+from datetime import datetime
 from typing import Literal
 
 from nooa import Agent, strategy
@@ -16,7 +17,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from insight_agent.evidence_streams._trace import walk_spans
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
-from insight_agent.insight import Insight
+from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -75,10 +76,10 @@ class EvidenceCompletion(BaseModel):
             if actual != expected:
                 raise ValueError(f"Check {trace.id}: expected {expected}, got {actual}")
 
-    def scan(self, snapshot: TraceSnapshot) -> tuple[list[str], int]:
+    def scan(self, snapshot: TraceSnapshot) -> tuple[list[TraceEvidence], int]:
         """Scan all traces after the example checks pass.
 
-        Return matching trace IDs and the count of unknown traces.
+        Return matching traces with their supporting spans and the count of unknown traces.
         """
         self.validate_result()
         if self.predicate is None:
@@ -89,7 +90,15 @@ class EvidenceCompletion(BaseModel):
             trace_id = trace.id
             decision = self._evaluate(trace)
             if decision.status == "match":
-                matches.append(trace_id)
+                matches.append(
+                    TraceEvidence(
+                        trace_id=trace_id,
+                        spans=[
+                            SpanEvidence(span_id=sid)
+                            for sid in dict.fromkeys(decision.witness_span_ids)
+                        ],
+                    )
+                )
             unknown += decision.status == "unknown"
         if not matches:
             raise ValueError(
@@ -97,8 +106,8 @@ class EvidenceCompletion(BaseModel):
             )
         return matches, unknown
 
-    def apply(self, snapshot: TraceSnapshot) -> Insight:
-        """Add matching trace IDs, or keep the insight unchanged if the scan fails."""
+    def apply(self, snapshot: TraceSnapshot, run_timestamp: datetime) -> Insight:
+        """Add matching evidence, or keep the insight unchanged if the scan fails."""
         try:
             matches, unknown = self.scan(snapshot)
         except Exception as error:
@@ -116,8 +125,19 @@ class EvidenceCompletion(BaseModel):
                 "The scan added its matches, but other supporting traces may remain without references.",
                 stacklevel=2,
             )
+        evidence = {item.trace_id: item for item in self.insight.evidence}
+        added_trace = any(item.trace_id not in evidence for item in matches)
+        for item in matches:
+            previous = evidence.get(item.trace_id, item)
+            spans = {span.span_id: span for span in previous.spans}
+            for span in item.spans:
+                spans.setdefault(span.span_id, span)
+            evidence[item.trace_id] = previous.model_copy(update={"spans": list(spans.values())})
         return self.insight.model_copy(
-            update={"trace_refs": list(dict.fromkeys([*self.insight.trace_refs, *matches]))}
+            update={
+                "evidence": list(evidence.values()),
+                "updated_date": run_timestamp if added_trace else self.insight.updated_date,
+            }
         )
 
 
@@ -143,11 +163,12 @@ class InsightCompilation(Agent):
         evidence_streams: list[EvidenceStreamResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
+        run_timestamp: datetime,
     ) -> list[Insight]:
         completions = await self._compile_insights(
-            evidence_streams, trace_snapshot, existing_insights
+            evidence_streams, trace_snapshot, existing_insights, run_timestamp
         )
-        return [completion.apply(trace_snapshot) for completion in completions]
+        return [completion.apply(trace_snapshot, run_timestamp) for completion in completions]
 
     @strategy(CodeActStrategy(config=CodeActConfig(postconditions=[_validate_completions])))
     async def _compile_insights(
@@ -155,6 +176,7 @@ class InsightCompilation(Agent):
         evidence_streams: list[EvidenceStreamResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
+        run_timestamp: datetime,
     ) -> list[EvidenceCompletion]:  # ty: ignore[empty-body] -- Nooa generates the ellipsis method at runtime.
         """
         Your job is to be the last step of the insight creation process. An
@@ -221,15 +243,28 @@ class InsightCompilation(Agent):
         Preserve each existing insight's id exactly. Never invent an id or
         assign an existing id to a new insight; new insights have id=None.
         Existing insights should never be removed or modified, but you can
-        update the trace_refs on existing insights to match new traces you
+        update the evidence on existing insights to match new traces you
         identified. Keep existing references, including those outside this snapshot.
         When you merge insights, check that added references support the merged
-        claim. Do not copy every candidate into trace_refs.
+        claim. Merge evidence by trace ID. Do not copy every candidate into evidence.
 
-        Leave trace_links empty; the application resolves source links after compilation.
+        You are given run_timestamp, the current time for this run. Set an
+        insight's updated_date to run_timestamp whenever you create it, or
+        whenever you add a trace to an existing insight that it did not
+        already support. If an existing insight gains no new trace this run,
+        leave its updated_date exactly as given, including leaving it unset
+        if it was already unset -- never invent one and never clear one.
+
+        When inspecting supporting traces, record the specific relevant Span.id values
+        in evidence[].spans as span_id, grouped by trace_id. A trace may have several supporting spans
+        at any nesting depth. Use only IDs observed in that trace, never event row IDs.
+        Do not select unrelated spans or every span automatically. Omit spans when
+        the evidence concerns the whole trace or no specific span can be identified.
+        Preserve existing evidence spans when their traces are unavailable.
+        Leave all evidence url fields unset; the application resolves URLs after compilation.
 
         After validating, narrowing, and merging insights, find all traces that support
-        each final claim. Keep only checked examples and existing references in trace_refs.
+        each final claim. Keep only checked examples and existing references in evidence.
         The application adds further matches. Use this workflow for every snapshot
         size. Review examples to develop the function below. Manual review and
         similarity search cannot replace it.
@@ -286,13 +321,15 @@ class InsightCompilation(Agent):
            does not prove there are none.
 
         Return the EvidenceCompletion objects you created through return_result
-        inside Python. Do not add their matches to trace_refs yourself. You can
+        inside Python. Do not add their matches to evidence yourself. You can
         fix a rejected return while your Python variables still exist. Fixing how
         you return an existing function does not count as changing it.
 
         The application reruns checks and scans before adding trace IDs without
-        duplicates. If a scan fails, it keeps existing references. If some traces
-        are unknown, it adds matches and warns that coverage is incomplete.
+        duplicates. It keeps the supporting span IDs and sets updated_date to
+        run_timestamp if the scan adds a new trace. If a scan fails, it keeps existing
+        references. If some traces are unknown, it adds matches and warns that
+        coverage is incomplete.
         Only set unresolved_reason when returning no predicate or checks.
 
         A span's existence does not prove it supports the claim. A completed scan
