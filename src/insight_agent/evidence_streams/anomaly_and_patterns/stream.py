@@ -734,7 +734,7 @@ def build_evidence_digest(
     max_anomalies: int = 50,
     max_patterns_per_section: int = 24,
 ) -> str:
-    """Build the compact Stage-6 packet read by the NeMo Compass insight compilation LLM."""
+    """Build the compact Stage-6 packet read by the separate Analyst LLM."""
 
     prepared_by_id = {item.features.trace_id: item for item in prepared}
     ranked = sorted(

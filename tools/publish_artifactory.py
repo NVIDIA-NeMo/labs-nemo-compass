@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Build and publish trace-ingest and a NeMo Compass release candidate to NVIDIA Artifactory."""
+"""Build and publish trace-ingest and an Insight Agent release candidate to NVIDIA Artifactory."""
 
 from __future__ import annotations
 

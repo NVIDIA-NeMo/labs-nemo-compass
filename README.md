@@ -15,10 +15,8 @@ For example, an insight might say:
 
 This is a research preview for collaboration and evaluation.
 
-NeMo Compass was previously called Trace Analyst / Insight Agent. The CLI is
-`nemo-compass`; the `insight-agent` command remains available for existing scripts.
-The Python distribution (`insight-agent`), import namespace (`insight_agent`),
-and `INSIGHT_AGENT_*` environment variables retain their existing names for compatibility.
+The Python package and CLI are named `insight-agent`. Python integrations use
+`insight_agent`, and model settings use `INSIGHT_AGENT_*` environment variables.
 
 ## Start here
 
@@ -37,7 +35,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
 | JSONL or ATIF files | [Trace files](docs/sources/files.md) |
 | Another trace store | [Convert your traces](docs/sources/custom.md) |
 
-If `nemo-compass` is not found after installation, run `uv tool update-shell`
+If `insight-agent` is not found after installation, run `uv tool update-shell`
 and restart your terminal.
 
 ## After your first run

@@ -4,7 +4,7 @@
 """Environment configuration loaded before trace analysis and Insights Generation.
 
 The CLI loads a local ``.env`` here before constructing provider clients, so
-their SDKs can read their standard credential variables. NeMo Compass settings are
+their SDKs can read their standard credential variables. Analyst settings are
 resolved in one order, most explicit first:
 
 1. an explicit CLI flag
@@ -32,7 +32,7 @@ __all__ = [
     "resolve",
 ]
 
-#: Repo-specific names, so a `.env` can carry NeMo Compass settings without
+#: Repo-specific names, so a `.env` can carry Analyst settings without
 #: colliding with whatever provider variables litellm resolves on its own.
 ENV_MODEL = "INSIGHT_AGENT_MODEL"
 ENV_API_BASE = "INSIGHT_AGENT_API_BASE"

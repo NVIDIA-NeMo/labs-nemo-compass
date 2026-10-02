@@ -4,7 +4,7 @@
 """NeMo Compass analyzes your agent's behavior and surfaces actionable insights from its traces.
 
 After configuring your model and credentials, run:
-  nemo-compass --config config.yaml
+  insight-agent --config config.yaml
 
 Start with your trace source (Braintrust, LangSmith, Langfuse, MLflow, Intake, or files):
   https://github.com/NVIDIA-NeMo/labs-compass/blob/main/README.md#start-here

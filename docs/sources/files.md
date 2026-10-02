@@ -20,7 +20,7 @@ uv tool install \
 [Configure your inference model and key](../model-access.md#choose-a-model), then run:
 
 ```bash
-nemo-compass --trace.filesystem.path traces.jsonl --max-tokens 16384
+insight-agent --trace.filesystem.path traces.jsonl --max-tokens 16384
 ```
 
 For ATIF, use `--trace.atif.path trajectories.jsonl` instead.

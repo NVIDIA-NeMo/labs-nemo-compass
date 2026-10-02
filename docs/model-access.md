@@ -55,13 +55,13 @@ You can also set `model` and `api_base` in YAML or override them on the CLI.
 Keep `.env` in the folder where you run the command to load it automatically:
 
 ```bash
-nemo-compass --config config.yaml
+insight-agent --config config.yaml
 ```
 
 Or select an environment file explicitly with uv:
 
 ```bash
-uv tool run --env-file /path/to/.env --from insight-agent nemo-compass --config config.yaml
+uv tool run --env-file /path/to/.env insight-agent --config config.yaml
 ```
 
 Exported variables take priority over values in either file.

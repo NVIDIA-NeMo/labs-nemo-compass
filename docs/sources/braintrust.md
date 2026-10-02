@@ -35,7 +35,7 @@ trace:
 ```
 
 ```bash
-nemo-compass --config config.yaml
+insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
@@ -55,7 +55,7 @@ Use a window of completed runs; the loader does not wait for in-flight spans.
 For a single run:
 
 ```bash
-nemo-compass --config config.yaml --trace.max-traces 25
+insight-agent --config config.yaml --trace.max-traces 25
 ```
 
 The API endpoint defaults to `https://api.braintrust.dev`. Set `BRAINTRUST_API_URL` in `.env`

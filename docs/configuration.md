@@ -28,7 +28,7 @@ Relative paths resolve from the directory where you run the command.
 CLI options override individual YAML values. YAML uses underscores; CLI options use hyphens:
 
 ```bash
-nemo-compass --config config.yaml \
+insight-agent --config config.yaml \
   --trace.max-traces 25 \
   --output-path investigation.yml
 ```
@@ -36,10 +36,10 @@ nemo-compass --config config.yaml \
 You can also run without YAML:
 
 ```bash
-nemo-compass --trace.filesystem.path traces.jsonl --max-tokens 16384
+insight-agent --trace.filesystem.path traces.jsonl --max-tokens 16384
 ```
 
-Use `nemo-compass --help-all` for every option and its default.
+Use `insight-agent --help-all` for every option and its default.
 Explicit CLI and YAML model settings take priority over [environment defaults](model-access.md#credentials).
 
 ## Repeat a run

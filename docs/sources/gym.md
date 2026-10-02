@@ -31,7 +31,7 @@ trace:
 ```
 
 ```bash
-nemo-compass --config config.yaml
+insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
@@ -62,7 +62,7 @@ The loader reads the complete file and does not support `trace.max_traces`.
 You can also run without YAML:
 
 ```bash
-nemo-compass --trace.gym.path rollouts.jsonl --max-tokens 16384
+insight-agent --trace.gym.path rollouts.jsonl --max-tokens 16384
 ```
 
 ## What is preserved

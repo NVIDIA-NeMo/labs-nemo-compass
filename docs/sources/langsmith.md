@@ -36,7 +36,7 @@ trace:
 ```
 
 ```bash
-nemo-compass --config config.yaml
+insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)

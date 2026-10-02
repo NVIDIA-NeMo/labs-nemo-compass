@@ -35,10 +35,10 @@ the native artifacts without presenting them as recurring problems.
 ## Run it
 
 ```bash
-uv run nemo-compass --config compass-config.yaml
+uv run insight-agent --config trace-analyst-config.yaml
 ```
 
-Include `evidence_streams.tool_issues` in `compass-config.yaml` and set the other
+Include `evidence_streams.tool_issues` in `trace-analyst-config.yaml` and set the other
 stream keys to `false` for a tool-issue-only run.
 
 The CLI writes individual findings, cards, finding-type coverage, projected problems, rendered

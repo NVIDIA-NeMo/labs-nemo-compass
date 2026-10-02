@@ -21,7 +21,7 @@ license-files = [
     "third_party/NOTICES.txt",
     "third_party/license_texts/*.txt",
 ]
-authors = [{ name = "NeMo Compass contributors" }]
+authors = [{ name = "Insight Agent contributors" }]
 keywords = ["agent-traces", "evaluation", "anomaly-detection", "tool-use"]
 
 dependencies = [
@@ -64,7 +64,6 @@ dev = [
 ]
 
 [project.scripts]
-nemo-compass = "insight_agent.cli.main:main"
 insight-agent = "insight_agent.cli.main:main"
 
 [tool.uv]

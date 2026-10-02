@@ -54,7 +54,7 @@ uv tool install \
 which is separate from your trace store's key. From the folder containing `traces.jsonl`, run:
 
 ```bash
-nemo-compass --trace.filesystem.path traces.jsonl --max-tokens 16384
+insight-agent --trace.filesystem.path traces.jsonl --max-tokens 16384
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)

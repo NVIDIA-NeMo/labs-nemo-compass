@@ -33,7 +33,7 @@ trace:
 ```
 
 ```bash
-nemo-compass --config config.yaml
+insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
@@ -51,7 +51,7 @@ or `status` (`success`, `error`, `cancelled`, or `unknown`). If you set both
 For a single run:
 
 ```bash
-nemo-compass --config config.yaml --trace.intake.query.experiment-id my-experiment-id
+insight-agent --config config.yaml --trace.intake.query.experiment-id my-experiment-id
 ```
 
 `sort` defaults to `started_at` (oldest first); use `-started_at` for newest first.

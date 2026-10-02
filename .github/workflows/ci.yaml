@@ -82,4 +82,3 @@ jobs:
           cd "$smoke_env"
           "$smoke_env/bin/python" -I -c 'from insight_agent.traces import Trace; from trace_ingest import Trace as SharedTrace; assert Trace is SharedTrace'
           "$smoke_env/bin/insight-agent" --help
-          "$smoke_env/bin/nemo-compass" --help

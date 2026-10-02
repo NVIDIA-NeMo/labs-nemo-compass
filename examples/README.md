@@ -14,11 +14,11 @@ uv tool install \
 ```
 
 Download the [example traces](tau_bench_traces.jsonl) and
-[configuration](compass-config.yaml) into one folder, keeping their filenames.
+[configuration](trace-analyst-config.yaml) into one folder, keeping their filenames.
 In that folder, [configure your model and API key](../docs/model-access.md#choose-a-model), then run:
 
 ```bash
-nemo-compass --config compass-config.yaml
+insight-agent --config trace-analyst-config.yaml
 ```
 
 The terminal reports completed and skipped evidence streams. If it finds actionable insights,
