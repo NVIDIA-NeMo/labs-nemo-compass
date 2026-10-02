@@ -1,16 +1,16 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Try Trace Analyst
+# Try NeMo Compass
 
-Run the example customer-service traces to explore the insights Trace Analyst produces.
+Run the example customer-service traces to explore the insights NeMo Compass produces.
 You only need an inference API key; no trace-platform account is required.
 
 With [uv and Git installed](../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 Download the [example traces](tau_bench_traces.jsonl) and
