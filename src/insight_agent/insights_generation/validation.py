@@ -5,20 +5,15 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
-from nooa import Agent
 from nooa.agentdoc import truncating_pformat
-from nooa.unifiedllm import Tool, ToolCall, UnifiedLLM, create_tool_from_callable
 from pydantic import BaseModel, ConfigDict
 
 from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.insights_generation.codebase import CodebaseTools
+from insight_agent.insights_generation.investigation import CodebaseInvestigation
 from insight_agent.traces import Trace
 
-_MAX_TOOL_ROUNDS = 12
 _MAX_TRACE_CONTEXT_CHARS = 100_000
 _SYSTEM_PROMPT = """Validate exactly one potential problem from an AI agent's runtime traces.
 
@@ -44,16 +39,8 @@ class _SupportDecision(BaseModel):
     supported: bool | None
 
 
-def _support_decision(content: object) -> _SupportDecision:
-    if isinstance(content, str):
-        return _SupportDecision.model_validate_json(content)
-    if isinstance(content, _SupportDecision):
-        return content
-    return _SupportDecision.model_validate(content)
-
-
-def _validated_support(content: object, used_codebase_tool: bool) -> bool | None:
-    supported = _support_decision(content).supported
+def _validated_support(decision: _SupportDecision, used_codebase_tool: bool) -> bool | None:
+    supported = decision.supported
     if supported is None or used_codebase_tool:
         return supported
     return None
@@ -82,81 +69,20 @@ def _validation_messages(
     ]
 
 
-class ProblemValidation(Agent):
+class ProblemValidation(CodebaseInvestigation):
     """Validate trace-derived Problems using confined, read-only codebase access."""
-
-    def __init__(self, code_base_path: Path, llm: UnifiedLLM) -> None:
-        super().__init__(llm=llm)
-        codebase = CodebaseTools(code_base_path)
-        self._tools: list[Tool] = [
-            create_tool_from_callable(codebase.list_files),
-            create_tool_from_callable(codebase.search_code),
-            create_tool_from_callable(codebase.read_file),
-        ]
-        self._tools_by_name = {tool.name: tool for tool in self._tools}
-
-    def _execute_tool_call(self, tool_call: ToolCall) -> tuple[Any, bool]:
-        tool = self._tools_by_name.get(tool_call.name)
-        if tool is None:
-            return {"error": f"unknown tool: {tool_call.name}"}, False
-
-        try:
-            arguments = json.loads(tool_call.arguments)
-            return tool.callable(**arguments), True
-        except (
-            FileNotFoundError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-        ) as exc:
-            return {"error": str(exc)}, False
-
-    async def _final_decision(
-        self,
-        messages: list[dict[str, Any]],
-        used_codebase_tool: bool,
-    ) -> bool | None:
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "Stop investigating. Return the supported decision now using only the "
-                    "evidence already collected. If that evidence is insufficient, return null."
-                ),
-            }
-        )
-        response = await self.llm.acall(messages, output_model=_SupportDecision)
-        return _validated_support(response.content, used_codebase_tool)
 
     async def is_supported(
         self, problem: Problem, supporting_traces: tuple[Trace, ...]
     ) -> bool | None:
-        messages = _validation_messages(problem, supporting_traces)
-        used_codebase_tool = False
-
-        for _ in range(_MAX_TOOL_ROUNDS):
-            response = await self.llm.acall(
-                messages,
-                tools=self._tools,
-                output_model=_SupportDecision,
-            )
-            if response.tool_calls:
-                messages.append(response.assistant_message)
-                for tool_call in response.tool_calls:
-                    result, succeeded = self._execute_tool_call(tool_call)
-                    used_codebase_tool |= succeeded
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps(result, ensure_ascii=False),
-                        }
-                    )
-                continue
-
-            return _validated_support(response.content, used_codebase_tool)
-
-        return await self._final_decision(messages, used_codebase_tool)
+        decision, used_codebase_tool = await self.investigate(
+            _validation_messages(problem, supporting_traces),
+            _SupportDecision,
+            "Stop investigating. Using the evidence already collected, return only a JSON object "
+            "with a single supported field whose value is true, false, or null. Use null when "
+            "that evidence is insufficient.",
+        )
+        return _validated_support(decision, used_codebase_tool)
 
 
 __all__ = ["ProblemValidation"]

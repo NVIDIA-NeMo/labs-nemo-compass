@@ -9,7 +9,6 @@ import json
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.insights_generation import validation
 from insight_agent.insights_generation.validation import ProblemValidation
 from insight_agent.traces import Trace, TraceAggregate
 
@@ -74,8 +73,7 @@ def test_problem_validation_can_return_not_applicable(tmp_path) -> None:
     assert supported is None
 
 
-def test_problem_validation_forces_decision_after_tool_limit(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(validation, "_MAX_TOOL_ROUNDS", 1)
+def test_problem_validation_rejects_code_contradicted_problem(tmp_path) -> None:
     (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
     tool_call = ToolCall(
         id="read-1",

@@ -237,6 +237,82 @@ def test_code_validation_filters_problems_and_preserves_stream_result(
     ]
 
 
+def test_confidence_rating_preserves_compiled_severity(tmp_path, monkeypatch) -> None:
+    trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
+    snapshot = TraceSnapshot([trace])
+    insight = Insight(
+        name="Timeouts",
+        description="Tools time out.",
+        trace_refs=["trace-1", "missing"],
+        severity="high",
+    )
+    received = []
+
+    class FakeRater:
+        def __init__(self, code_base_path, llm):
+            assert code_base_path == tmp_path.resolve()
+
+        async def rate(self, insight, supporting_traces):
+            received.append((insight, supporting_traces))
+            return SimpleNamespace(confidence="high")
+
+    monkeypatch.setattr(cli, "InsightConfidence", FakeRater)
+
+    result = asyncio.run(
+        cli._rate_confidence_with_code([insight], snapshot, tmp_path, FakeLLMClient())
+    )
+
+    assert received == [(insight, (trace,))]
+    assert result[0].confidence == "high"
+    assert result[0].severity == "high"
+    assert insight.confidence is None
+
+
+@pytest.mark.parametrize("confidence", [False, True])
+def test_final_compilation_severity_does_not_require_confidence(
+    tmp_path, monkeypatch, confidence
+) -> None:
+    from rich.console import Console
+
+    trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
+    snapshot = TraceSnapshot([trace])
+    evidence = [
+        EvidenceStreamResult(
+            stream_name="test",
+            problems=(Problem(description="Timeout", supporting_trace_ids=("trace-1",)),),
+        )
+    ]
+    insight = Insight(
+        name="Timeout",
+        description="The task never completes.",
+        trace_refs=["trace-1", "trace-2"],
+        severity="high",
+    )
+    compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[insight]))
+    review = AsyncMock(return_value=[insight.model_copy(update={"confidence": "high"})])
+    monkeypatch.setattr(cli, "_check_environment", lambda config: "test-key")
+    monkeypatch.setattr(
+        cli, "_configured_trace_loader", lambda config: SimpleNamespace(load=lambda: snapshot)
+    )
+    monkeypatch.setattr(cli, "_run_evidence_streams", AsyncMock(return_value=evidence))
+    monkeypatch.setattr(cli, "_validate_evidence_with_code", AsyncMock(return_value=evidence))
+    monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
+    monkeypatch.setattr(cli, "InsightCompilation", lambda llm: compilation)
+    monkeypatch.setattr(cli, "_rate_confidence_with_code", review)
+    config = RunConfig(
+        trace={"filesystem": {"path": "traces.jsonl"}},
+        confidence=confidence,
+        code_base=tmp_path if confidence else None,
+    )
+
+    result = asyncio.run(cli._generate_insights(config, cli.RunOutput(Console(quiet=True))))
+
+    compilation.compile_insights.assert_awaited_once()
+    assert result.insights[0].severity == "high"
+    assert result.insights[0].confidence == ("high" if confidence else None)
+    assert review.await_count == int(confidence)
+
+
 def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):
     async def run():
         loop = asyncio.get_running_loop()

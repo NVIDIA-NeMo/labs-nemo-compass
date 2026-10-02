@@ -311,6 +311,16 @@ class RunConfig(BaseSettings):
         default=None,
         description="Existing insights.json to reconcile with newly generated Insights",
     )
+    confidence: bool = Field(
+        default=False,
+        description="Opt-in code review of insight confidence; requires code_base. Severity is assigned during compilation",
+    )
+
+    @model_validator(mode="after")
+    def confidence_requires_code_base(self) -> RunConfig:
+        if self.confidence and self.code_base is None:
+            raise ValueError("confidence requires code_base to be set")
+        return self
 
     @classmethod
     def settings_customise_sources(
