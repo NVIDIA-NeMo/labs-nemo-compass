@@ -370,3 +370,19 @@ def test_source_link_uses_root_event_id_and_app_settings(rows, monkeypatch, expe
         "object_id": ["experiment" if experiment else "project"],
         "id": ["row-root"],
     }
+
+
+def test_nested_span_links_use_each_row_id(rows):
+    from urllib.parse import parse_qs, urlsplit
+
+    with client_for(rows) as client:
+        trace = next(iter(BraintrustTraceLoader(config(org_name="org"), client).load()))
+    pending = list(trace.root_spans)
+    seen = {}
+    while pending:
+        span = pending.pop()
+        pending.extend(span.children)
+        assert span.source_url is not None
+        seen[span.id] = parse_qs(urlsplit(span.source_url).query)["id"][0]
+    assert seen == {row["span_id"]: row["id"] for row in rows}
+    assert trace.source_url == trace.root_spans[0].source_url

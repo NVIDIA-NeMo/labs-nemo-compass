@@ -42,6 +42,10 @@ insight-agent --config config.yaml
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
 for help with findings or skipped evidence streams.
 
+When an insight identifies specific supporting spans, links open their individual
+LangSmith runs. If a run URL is unavailable, the report retains the trace link
+and span ID.
+
 ## Narrow the input
 
 Add fields under `trace.langsmith` as needed:
