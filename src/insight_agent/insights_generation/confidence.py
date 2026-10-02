@@ -15,12 +15,17 @@ from insight_agent.insights_generation.investigation import CodebaseInvestigatio
 from insight_agent.traces import Trace
 
 _MAX_TRACE_CONTEXT_CHARS = 100_000
-_SYSTEM_PROMPT = """Rate exactly one Insight, derived from an AI agent's runtime traces, on
-confidence. Use the codebase tools to locate the root cause: the prompt, config,
-guard, retry, or code path that produces the observed behavior.
+_SYSTEM_PROMPT = """Score the provided insight on confidence. The insight is derived from the
+agent's runtime traces.
 
-Confidence — how much of the insight's claim survives your investigation, across its behavior,
-its root cause, its scope, and any implied remediation:
+Confidence scoring:
+Use the codebase tools to investigate the root cause claimed by the insight and shown in the
+supporting traces. Review every relevant source of the behavior, including prompts,
+configuration, guards, retries, and any other involved code path.
+
+After completing the investigation, assign a confidence score based on how much of the insight's
+claim is supported across the agent's behavior, root cause, scope, and implied remediation. Use
+low, med, or high:
 - high: all of these hold up against the code and supporting traces.
 - med: the behavior reproduces, but the root cause, scope, or remediation is wrong or unconfirmed.
 - low: the central claim does not survive; the code contradicts it or supporting traces don't show it.
