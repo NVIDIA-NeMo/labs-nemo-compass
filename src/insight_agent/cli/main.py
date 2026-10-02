@@ -7,10 +7,10 @@ After configuring your model and credentials, run:
   insight-agent --config config.yaml
 
 Start with your trace source (Braintrust, LangSmith, Langfuse, MLflow, Intake, or files):
-  https://github.com/NVIDIA-NeMo/labs-compass/blob/main/README.md#start-here
+  https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/README.md#start-here
 
 Understand your results:
-  https://github.com/NVIDIA-NeMo/labs-compass/blob/main/docs/results.md
+  https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/results.md
 
 Use --help-all for every setting. CLI options override individual YAML values.
 """
@@ -123,7 +123,7 @@ def _check_environment(config: RunConfig) -> str:
             + "\n".join(missing)
             + "\n\nSet these in .env in your working directory (NAME=value),\n"
             "or export them in your shell, then rerun the command.\n"
-            "Setup: https://github.com/NVIDIA-NeMo/labs-compass/blob/main/docs/model-access.md"
+            "Setup: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/model-access.md"
         )
     assert api_key is not None
     return api_key

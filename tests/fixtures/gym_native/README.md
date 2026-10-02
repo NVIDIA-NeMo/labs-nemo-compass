@@ -47,7 +47,7 @@ from responses_api_agents.opencode_agent.tests.test_trajectory import (
     parse_opencode_observations,
 )
 
-out = Path("/absolute/path/to/labs-compass/tests/fixtures/gym_native")
+out = Path("/absolute/path/to/labs-nemo-compass/tests/fixtures/gym_native")
 out.mkdir(parents=True, exist_ok=True)
 for label, parse in [
     ("local", _parse_opencode_session),

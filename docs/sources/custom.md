@@ -24,7 +24,7 @@ Give your agent the input details above and this prompt:
 
 ```text
 Write and run a small script to convert my traces into traces.jsonl for
-NeMo Compass: https://github.com/NVIDIA-NeMo/labs-compass
+NeMo Compass: https://github.com/NVIDIA-NeMo/labs-nemo-compass
 Use the export or API access details I provided.
 
 Use its current canonical Trace model and write one complete trace per
@@ -47,7 +47,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 [Configure your inference model and key](../model-access.md#choose-a-model),

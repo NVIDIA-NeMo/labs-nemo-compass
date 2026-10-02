@@ -56,7 +56,7 @@ install command. Keep your source extra too. For LangSmith:
 
 ```bash
 uv tool install \
-  'insight-agent[langsmith,local-embedding] @ git+https://github.com/NVIDIA-NeMo/labs-compass.git@main'
+  'insight-agent[langsmith,local-embedding] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 insight-agent --config config.yaml --evidence-streams.user-sentiment.local-embeddings
 ```
 
