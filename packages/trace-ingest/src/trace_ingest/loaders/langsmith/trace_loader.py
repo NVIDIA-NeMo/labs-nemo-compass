@@ -162,6 +162,9 @@ class LangSmithTraceLoader:
                     },
                 )
                 trace.source_url = http_source_url(selected[trace_id].url)
+                span_urls = {str(run.id): http_source_url(run.url) for run in runs}
+                for span in walk_spans(trace.root_spans):
+                    span.source_url = span_urls.get(span.id)
                 unresolved_parent_count += unresolved
                 run_count += len(runs)
                 call_count += sum(

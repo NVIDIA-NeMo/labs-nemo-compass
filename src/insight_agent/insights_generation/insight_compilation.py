@@ -85,11 +85,10 @@ class InsightCompilation(Agent):
         Preserve each existing insight's id exactly. Never invent an id or
         assign an existing id to a new insight; new insights have id=None.
         Existing insights should never be removed or modified, but you can
-        update the trace_refs on existing insights to match new traces you
-        identified. Only use trace_refs that come from evidence streams,
-        don't worry about searching the trace snapshot to find traces that
-        match a particular insight. When you merge insights, also merge the
-        trace_refs.
+        update the evidence on existing insights to match new traces you
+        identified. Only use trace IDs that come from evidence streams, don't
+        worry about searching the trace snapshot to find traces that match a
+        particular insight. When you merge insights, also merge the evidence by trace ID.
 
         You are given run_timestamp, the current time for this run. Set an
         insight's updated_date to run_timestamp whenever you create it, or
@@ -98,7 +97,13 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
-        Leave trace_links empty; the application resolves source links after compilation.
+        When inspecting supporting traces, record the specific relevant Span.id values
+        in evidence[].spans as span_id, grouped by trace_id. A trace may have several supporting spans
+        at any nesting depth. Use only IDs observed in that trace, never event row IDs.
+        Do not select unrelated spans or every span automatically. Omit spans when
+        the evidence concerns the whole trace or no specific span can be identified.
+        Preserve existing evidence spans when their traces are unavailable.
+        Leave all evidence url fields unset; the application resolves URLs after compilation.
 
         Return the list of ranked, validated and merged insights. Include
         existing insights.

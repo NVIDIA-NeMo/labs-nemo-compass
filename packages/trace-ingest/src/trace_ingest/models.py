@@ -98,6 +98,7 @@ class Span(_TraceModel):
         min_length=1,
         description="Stable span identifier, unique within its containing trace.",
     )
+    source_url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
     kind: SpanKind = Field(description="Normalized span category represented by this source span.")
     children: list[Span] = Field(
         default_factory=list,
