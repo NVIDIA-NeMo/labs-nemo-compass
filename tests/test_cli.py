@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import yaml
 from nooa.unifiedllm import FakeLLMClient
 
 import insight_agent.cli.main as cli
@@ -152,8 +153,9 @@ def test_anthropic_parameters_are_translated_to_native_fields(clean_environment,
     assert native["tool_choice"] == {"type": "auto"}
 
 
+@pytest.mark.parametrize("save_file", [True, False])
 def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
-    clean_environment, tmp_path, monkeypatch, capsys, select_streams
+    clean_environment, tmp_path, monkeypatch, capsys, select_streams, save_file
 ):
     existing = [
         Insight.model_validate(
@@ -161,8 +163,15 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
                 "name": "Search omits archived documents",
                 "description": "Archived documents disappear from search results.",
                 "evidence": [
-                    {"trace_id": "historical-trace-1"},
-                    {"trace_id": "historical-trace-2"},
+                    {
+                        "trace_id": f"historical-trace-{i}",
+                        "url": f"https://provider.test/trace/{i}",
+                        "spans": [
+                            {"span_id": f"span-{j}", "url": f"https://provider.test/span/{i}/{j}"}
+                            for j in range(3)
+                        ],
+                    }
+                    for i in range(116)
                 ],
             }
         )
@@ -186,20 +195,35 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
             "--existing-insights",
             str(existing_path),
             "--output-path",
-            str(output_path),
+            str(output_path) if save_file else "-",
         ]
     )
 
     compilation.compile_insights.assert_not_awaited()
     assert result == cli.EXIT_OK
     captured = capsys.readouterr()
-    assert output_path.read_text(encoding="utf-8") == captured.out
+    assert yaml.safe_load(captured.out) == [item.model_dump() for item in existing]
+    assert "116 supporting traces · showing 3" in captured.err
+    assert [
+        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("  Trace ")
+    ] == [f"https://provider.test/trace/{i}" for i in range(3)]
+    assert [
+        line.split(" — ")[1] for line in captured.err.splitlines() if line.startswith("    ↳ Span ")
+    ] == [f"https://provider.test/span/{i}/{j}" for i in range(3) for j in range(2)]
+    assert captured.err.count("1 more span") == 3
+    destination = "saved insights file" if save_file else "YAML output"
+    assert f"113 more traces in the {destination}." in captured.err
     assert "No new insights produced from 1 trace." in captured.err
     assert "1 existing insight retained." in captured.err
     assert "Skipped" in captured.err
     assert "Tool issues" in captured.err and "No tool calls" in captured.err
-    assert f"Saved: {output_path}" in captured.err
-    assert load_insights(output_path) == existing
+    if save_file:
+        assert f"Saved: {output_path}" in captured.err
+        assert output_path.read_text(encoding="utf-8") == captured.out
+        assert load_insights(output_path) == existing
+    else:
+        assert "Saved:" not in captured.err
+        assert not output_path.exists()
 
 
 def test_code_validation_filters_problems_and_preserves_stream_result(
@@ -207,7 +231,11 @@ def test_code_validation_filters_problems_and_preserves_stream_result(
 ) -> None:
     trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
     snapshot = TraceSnapshot([trace])
-    supported = Problem(description="Supported", supporting_trace_ids=("trace-1",))
+    supported = Problem(
+        description="Supported",
+        supporting_trace_ids=("trace-1",),
+        candidate_trace_ids=("trace-1", "not-fetched-by-code-validator"),
+    )
     unsupported = Problem(description="Unsupported", supporting_trace_ids=("trace-1",))
     unknown = Problem(description="Unknown", supporting_trace_ids=("trace-1",))
     evidence = [

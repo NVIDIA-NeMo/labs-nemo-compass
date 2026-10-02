@@ -168,11 +168,19 @@ class RunOutput:
         for insight in result.insights:
             self.console.print(Text("\n" + insight.name, style="bold"))
             evidence = {item.trace_id: item for item in insight.evidence}
-            trace_labels = _short_ids(list(evidence))
+            trace_labels = _short_ids(list(evidence)[:3])
+            summary = count(len(evidence), "supporting trace")
+            if len(evidence) > len(trace_labels):
+                summary += f" · showing {len(trace_labels)}"
+            self.console.print(summary)
             for ref in trace_labels:
                 span_urls = {span.span_id: span.url for span in evidence[ref].spans}
                 span_ids = list(span_urls)
-                needs_trace_link = not span_ids or any(not span_urls.get(sid) for sid in span_ids)
+                needs_trace_link = (
+                    not span_ids
+                    or len(span_ids) > 2
+                    or any(not span_urls.get(sid) for sid in span_ids)
+                )
                 line = Text("  ")
                 label = f"Trace {trace_labels[ref]}"
                 if needs_trace_link:
@@ -180,11 +188,18 @@ class RunOutput:
                 else:
                     line.append(label)
                 self.console.print(line, soft_wrap=True)
-                for span_id, span_label in _short_ids(span_ids).items():
+                for span_id, span_label in _short_ids(span_ids[:2]).items():
                     span_line = Text("    ↳ ")
                     span_line.append_text(
                         evidence_label(f"Span {span_label}", span_urls.get(span_id))
                     )
                     self.console.print(span_line, soft_wrap=True)
+                if len(span_ids) > 2:
+                    self.console.print(f"    … {count(len(span_ids) - 2, 'more span')}")
+            if len(evidence) > len(trace_labels):
+                destination = "YAML output" if output_path == Path("-") else "saved insights file"
+                self.console.print(
+                    f"{count(len(evidence) - len(trace_labels), 'more trace')} in the {destination}."
+                )
         if result.insights and output_path != Path("-"):
             self.console.print(f"\nSaved: {output_path}", soft_wrap=True)

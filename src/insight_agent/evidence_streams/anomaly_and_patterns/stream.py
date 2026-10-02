@@ -984,6 +984,7 @@ def problems_from_analysis(result: AnomalyAndPatternsAnalysis) -> tuple[Problem,
             anomalies,
             key=lambda row: (-row.anomaly_score, row.trace_id),
         )
+        trace_ids = tuple(dict.fromkeys(row.trace_id for row in ranked))
         reason_counts = Counter(str(reason) for row in anomalies for reason in row.anomaly_reasons)
         common_reasons = (
             ", ".join(f"{reason} ({count})" for reason, count in reason_counts.most_common(5))
@@ -998,7 +999,8 @@ def problems_from_analysis(result: AnomalyAndPatternsAnalysis) -> tuple[Problem,
         problems.append(
             Problem(
                 description=description,
-                supporting_trace_ids=tuple(row.trace_id for row in ranked[:50]),
+                supporting_trace_ids=trace_ids[:50],
+                candidate_trace_ids=trace_ids,
             )
         )
 

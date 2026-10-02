@@ -580,6 +580,7 @@ class ToolIssueCard(BaseModel):
     finding_count: int = Field(ge=1)
     independent_case_count: int = Field(ge=1)
     eligible_for_analyst: bool
+    trace_ids: tuple[str, ...] = Field(min_length=1)
     representative_evidence: tuple[RepresentativeEvidence, ...] = Field(min_length=1)
     impact_status: Literal["not_established"]
     impact_boundary: str
@@ -622,6 +623,7 @@ def build_cards(
                 finding_count=len(members),
                 independent_case_count=len(logical_cases),
                 eligible_for_analyst=eligible,
+                trace_ids=tuple(dict.fromkeys(str(member["trace_id"]) for member in members)),
                 representative_evidence=tuple(examples),
                 impact_status="not_established",
                 impact_boundary="No impact is claimed beyond the directly observed tool-use issue.",
@@ -681,6 +683,7 @@ def problems_from_cards(
                     f"{card.impact_boundary}"
                 ),
                 supporting_trace_ids=trace_ids,
+                candidate_trace_ids=card.trace_ids,
             )
         )
     return tuple(problems)
