@@ -33,9 +33,14 @@ from rich.console import Console
 from trace_ingest.loaders.gym import GymTraceLoader
 
 from insight_agent.cli.output import RunOutput, RunResult, display_name
-from insight_agent.config import EvidenceStreamsConfig, RunConfig, TraceConfig
+from insight_agent.config import (
+    DEFAULT_CODE_VALIDATION_CONCURRENCY,
+    EvidenceStreamsConfig,
+    RunConfig,
+    TraceConfig,
+)
 from insight_agent.evidence_streams.builtins import registered_builtin_streams
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.insights_generation.config import (
     ENV_API_BASE,
@@ -77,7 +82,7 @@ from insight_agent.trace_loaders.mlflow import (
     MLflowTraceLoader,
 )
 from insight_agent.trace_loaders.trace_loaders import TraceLoader
-from insight_agent.traces import TraceSnapshot
+from insight_agent.traces import Trace, TraceSnapshot
 
 EXIT_OK = 0
 EXIT_SETUP = 2
@@ -260,6 +265,8 @@ async def _validate_evidence_with_code(
     snapshot: TraceSnapshot,
     code_base_path: Path,
     llm: UnifiedLLM,
+    *,
+    max_concurrency: int = DEFAULT_CODE_VALIDATION_CONCURRENCY,
 ) -> list[EvidenceStreamResult]:
     """Keep only Problems that the supplied codebase supports."""
 
@@ -267,24 +274,38 @@ async def _validate_evidence_with_code(
     if not code_base_path.is_dir():
         raise ValueError(f"code_base must be an existing directory: {code_base_path}")
     validator = ProblemValidation(code_base_path, llm)
+    validation_slots = asyncio.Semaphore(max_concurrency)
 
-    async def validate_result(result: EvidenceStreamResult) -> EvidenceStreamResult:
-        validations = []
-        for problem in result.problems:
-            supporting_traces = tuple(
-                snapshot.get_trace_by_id(trace_id) for trace_id in problem.supporting_trace_ids
-            )
-            validations.append(validator.is_supported(problem, supporting_traces))
+    async def validate_problem(
+        problem: Problem, supporting_traces: tuple[Trace, ...]
+    ) -> bool | None:
+        async with validation_slots:
+            return await validator.is_supported(problem, supporting_traces)
 
-        decisions = await asyncio.gather(*validations)
+    validations: list[asyncio.Task[bool | None]] = []
+    try:
+        for result in evidence:
+            for problem in result.problems:
+                supporting_traces = tuple(
+                    snapshot.get_trace_by_id(trace_id) for trace_id in problem.supporting_trace_ids
+                )
+                validations.append(
+                    asyncio.create_task(validate_problem(problem, supporting_traces))
+                )
+        decisions = iter(await asyncio.gather(*validations))
+    except BaseException:
+        for task in validations:
+            task.cancel()
+        await asyncio.gather(*validations, return_exceptions=True)
+        raise
+
+    retained_results = []
+    for result in evidence:
         retained_problems = tuple(
-            problem
-            for problem, decision in zip(result.problems, decisions, strict=True)
-            if decision is not False
+            problem for problem in result.problems if next(decisions) is not False
         )
-        return result.model_copy(update={"problems": retained_problems})
-
-    return list(await asyncio.gather(*(validate_result(result) for result in evidence)))
+        retained_results.append(result.model_copy(update={"problems": retained_problems}))
+    return retained_results
 
 
 def _build_llm(config: RunConfig, api_key: str) -> CompletionClient:
@@ -358,7 +379,13 @@ async def _compile_evidence(
     async with _build_llm(config, api_key) as llm:
         if config.code_base is not None:
             output.activity = "Checking candidate issues against the codebase"
-            evidence = await _validate_evidence_with_code(evidence, snapshot, config.code_base, llm)
+            evidence = await _validate_evidence_with_code(
+                evidence,
+                snapshot,
+                config.code_base,
+                llm,
+                max_concurrency=config.code_validation_concurrency,
+            )
             result.rejected_by_code = sum(len(item.problems) for item in result.evidence) - sum(
                 len(item.problems) for item in evidence
             )

@@ -27,6 +27,8 @@ from insight_agent.trace_loaders.braintrust import validate_braintrust_selection
 from insight_agent.trace_loaders.intake import IntakeTraceLoaderConfig
 from insight_agent.trace_loaders.langfuse import validate_langfuse_time_window
 
+DEFAULT_CODE_VALIDATION_CONCURRENCY = 4
+
 _CONFIG_MODEL_SETTINGS = SettingsConfigDict(
     extra="forbid",
     cli_kebab_case=True,
@@ -295,6 +297,11 @@ class RunConfig(BaseSettings):
     code_base: Path | None = Field(
         default=None,
         description="Optional local codebase used to validate trace-derived problems",
+    )
+    code_validation_concurrency: int = Field(
+        default=DEFAULT_CODE_VALIDATION_CONCURRENCY,
+        ge=1,
+        description="Maximum simultaneous candidate code validations across all evidence streams",
     )
 
     model: str | None = Field(default=None, description="Inference model")

@@ -4,6 +4,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from insight_agent.config import EvidenceStreamsConfig, RunConfig
 
 
@@ -69,6 +72,37 @@ def test_cli_accepts_optional_code_base() -> None:
     )
 
     assert config.code_base == Path("../agent-source")
+
+
+def test_code_validation_concurrency_default_yaml_and_cli_override(tmp_path: Path) -> None:
+    config = RunConfig(_cli_parse_args=["--trace.filesystem.path", "traces.jsonl"])
+    assert config.code_validation_concurrency == 4
+
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "trace:\n  filesystem:\n    path: traces.jsonl\ncode_validation_concurrency: 8\n",
+        encoding="utf-8",
+    )
+    config = RunConfig(_cli_parse_args=["--config", str(path)])
+    assert config.code_validation_concurrency == 8
+
+    config = RunConfig(
+        _cli_parse_args=["--config", str(path), "--code-validation-concurrency", "2"]
+    )
+    assert config.code_validation_concurrency == 2
+
+
+@pytest.mark.parametrize("concurrency", [0, -1])
+def test_code_validation_concurrency_must_be_positive(concurrency) -> None:
+    with pytest.raises(ValidationError, match="code_validation_concurrency"):
+        RunConfig(
+            _cli_parse_args=[
+                "--trace.filesystem.path",
+                "traces.jsonl",
+                "--code-validation-concurrency",
+                str(concurrency),
+            ]
+        )
 
 
 def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:

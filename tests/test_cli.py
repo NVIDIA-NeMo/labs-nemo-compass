@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -235,6 +236,232 @@ def test_code_validation_filters_problems_and_preserves_stream_result(
         (unsupported, (trace,)),
         (unknown, (trace,)),
     ]
+
+
+@pytest.mark.parametrize("concurrency", [None, 2, 8])
+def test_code_validation_bounds_concurrency_across_streams_and_preserves_results(
+    tmp_path, monkeypatch, concurrency
+) -> None:
+    args = ["--trace.filesystem.path", "traces.jsonl"]
+    if concurrency is not None:
+        args.extend(["--code-validation-concurrency", str(concurrency)])
+    config = RunConfig(_cli_parse_args=args)
+    traces = [
+        Trace(id=f"trace-{stream}", root_spans=[], aggregate=TraceAggregate())
+        for stream in range(3)
+    ]
+    evidence = [
+        EvidenceStreamResult(
+            stream_name=f"stream-{stream}",
+            problems=tuple(
+                Problem(
+                    description=f"Problem {stream}-{index}",
+                    supporting_trace_ids=(trace.id,),
+                )
+                for index in range(5)
+            ),
+            artifacts={"stream": stream},
+            finding_count=8,
+            limitations=("Some schemas are missing",),
+        )
+        for stream, trace in enumerate(traces)
+    ]
+    decisions = {
+        problem.description: (True, False, None)[index % 3]
+        for result in evidence
+        for index, problem in enumerate(result.problems)
+    }
+    active = peak = 0
+    received = []
+
+    class FakeValidator:
+        def __init__(self, code_base_path, llm):
+            assert code_base_path == tmp_path.resolve()
+
+        async def is_supported(self, problem, supporting_traces):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            received.append((problem, supporting_traces))
+            try:
+                await asyncio.sleep(0)
+                return decisions[problem.description]
+            finally:
+                active -= 1
+
+    monkeypatch.setattr(cli, "ProblemValidation", FakeValidator)
+
+    result = asyncio.run(
+        cli._validate_evidence_with_code(
+            evidence,
+            TraceSnapshot(traces),
+            tmp_path,
+            FakeLLMClient(),
+            max_concurrency=config.code_validation_concurrency,
+        )
+    )
+
+    assert peak == (4 if concurrency is None else concurrency)
+    assert active == 0
+    assert len(received) == 15
+    assert [item.stream_name for item in result] == [item.stream_name for item in evidence]
+    for original, filtered in zip(evidence, result, strict=True):
+        assert filtered.problems == tuple(
+            problem for problem in original.problems if decisions[problem.description] is not False
+        )
+        assert filtered.model_dump(exclude={"problems"}) == original.model_dump(
+            exclude={"problems"}
+        )
+        assert len(original.problems) == 5
+    assert all(
+        supporting_traces == (traces[int(problem.description.split()[1].split("-")[0])],)
+        for problem, supporting_traces in received
+    )
+
+
+def test_code_validation_propagates_validator_errors(tmp_path, monkeypatch) -> None:
+    trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
+    evidence = [
+        EvidenceStreamResult(
+            stream_name="test-stream",
+            problems=tuple(
+                Problem(description=f"Problem {index}", supporting_trace_ids=(trace.id,))
+                for index in range(8)
+            ),
+        )
+    ]
+    active = 0
+
+    class FakeValidator:
+        def __init__(self, code_base_path, llm):
+            pass
+
+        async def is_supported(self, problem, supporting_traces):
+            nonlocal active
+            active += 1
+            try:
+                await asyncio.sleep(0)
+                if problem.description == "Problem 0":
+                    raise RuntimeError("validation endpoint failed")
+                return True
+            finally:
+                active -= 1
+
+    monkeypatch.setattr(cli, "ProblemValidation", FakeValidator)
+
+    with pytest.raises(RuntimeError, match="validation endpoint failed"):
+        asyncio.run(
+            cli._validate_evidence_with_code(
+                evidence, TraceSnapshot([trace]), tmp_path, FakeLLMClient()
+            )
+        )
+
+    assert active == 0
+    assert len(evidence[0].problems) == 8
+
+
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_code_validation_cleans_up_siblings_before_returning_error(
+    tmp_path, monkeypatch, concurrency
+) -> None:
+    trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
+    evidence = [
+        EvidenceStreamResult(
+            stream_name=f"stream-{stream}",
+            problems=tuple(
+                Problem(
+                    description=f"Problem {stream}-{index}",
+                    supporting_trace_ids=(trace.id,),
+                )
+                for index in range(4)
+            ),
+        )
+        for stream in range(2)
+    ]
+    failure = RuntimeError("validation endpoint failed")
+    calls = []
+    active = 0
+
+    async def run():
+        release = asyncio.Event()
+
+        class FakeValidator:
+            def __init__(self, code_base_path, llm):
+                pass
+
+            async def is_supported(self, problem, supporting_traces):
+                nonlocal active
+                calls.append(problem.description)
+                active += 1
+                try:
+                    await asyncio.sleep(0)
+                    if problem.description == "Problem 0-0":
+                        raise failure
+                    await release.wait()
+                    return True
+                finally:
+                    active -= 1
+
+        monkeypatch.setattr(cli, "ProblemValidation", FakeValidator)
+        before = asyncio.all_tasks()
+        try:
+            with pytest.raises(RuntimeError, match="validation endpoint failed") as caught:
+                await cli._validate_evidence_with_code(
+                    evidence,
+                    TraceSnapshot([trace]),
+                    tmp_path,
+                    FakeLLMClient(),
+                    max_concurrency=concurrency,
+                )
+            assert caught.value is failure
+            pending = asyncio.all_tasks() - before
+            calls_at_return = tuple(calls)
+            for _ in range(3):
+                await asyncio.sleep(0)
+            assert not pending
+            assert active == 0
+            assert tuple(calls) == calls_at_return
+        finally:
+            pending = asyncio.all_tasks() - before
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("concurrency", [2, 8])
+def test_code_validation_receives_configured_concurrency(
+    tmp_path, monkeypatch, concurrency
+) -> None:
+    config = RunConfig(
+        trace={"filesystem": {"path": "traces.jsonl"}},
+        code_base=tmp_path,
+        code_validation_concurrency=concurrency,
+    )
+    snapshot = TraceSnapshot([])
+    result = cli.RunResult(trace_count=0, evidence=[], insights=[])
+    validate = AsyncMock(return_value=[])
+    monkeypatch.setattr(cli, "_validate_evidence_with_code", validate)
+    monkeypatch.setattr(cli, "_build_llm", lambda config, api_key: FakeLLMClient())
+
+    assert (
+        asyncio.run(
+            cli._compile_evidence(
+                config,
+                "test-key-not-real",
+                snapshot,
+                result,
+                cli.RunOutput(cli.Console(stderr=True)),
+                datetime(2026, 10, 2, tzinfo=timezone.utc),
+            )
+        )
+        == []
+    )
+    assert validate.await_count == 1
+    received = validate.await_args
+    assert received is not None
+    assert received.kwargs == {"max_concurrency": concurrency}
 
 
 def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):

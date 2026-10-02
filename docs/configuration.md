@@ -19,6 +19,7 @@ in the environment or `.env`.
 | `model`, `api_base`, `max_tokens` | [Inference settings](model-access.md#choose-a-model). |
 | `evidence_streams` | [Evidence streams and their prerequisites](evidence-streams.md). All five are enabled by default. |
 | `code_base` | [Local agent source](evidence-streams.md#check-findings-against-code) to consult during validation. |
+| `code_validation_concurrency` | Maximum simultaneous candidate code validations across all streams; positive integer, default 4. |
 | `existing_insights` | Previous JSON or YAML insight collection to reconcile with this run. |
 
 Relative paths resolve from the directory where you run the command.
@@ -41,6 +42,21 @@ insight-agent --trace.filesystem.path traces.jsonl --max-tokens 16384
 
 Use `insight-agent --help-all` for every option and its default.
 Explicit CLI and YAML model settings take priority over [environment defaults](model-access.md#credentials).
+
+## Code validation concurrency
+
+When `code_base` is configured, `code_validation_concurrency` limits candidate checks across
+all evidence streams in the run. Each candidate can make several model calls while inspecting code.
+The default of 4 is a conservative starting point, not a measured optimum for your endpoint.
+Choose a positive integer based on your provider limits and observed latency.
+If a candidate check fails, the run cancels the remaining checks and waits for their cleanup
+before propagating the original failure.
+
+For example, limit a run to two simultaneous candidate validations:
+
+```bash
+insight-agent --config config.yaml --code-validation-concurrency 2
+```
 
 ## Repeat a run
 
