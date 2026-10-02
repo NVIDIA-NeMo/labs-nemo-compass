@@ -69,7 +69,7 @@ class InsightConfidence(CodebaseInvestigation):
             "with a single confidence field whose value is low, med, or high, with no Markdown "
             "or explanation.",
         )
-        return result if result is not None and used_codebase_tool else _Confidence(confidence=None)
+        return result if used_codebase_tool else _Confidence(confidence=None)
 
 
 __all__ = ["InsightConfidence"]

@@ -82,8 +82,6 @@ class ProblemValidation(CodebaseInvestigation):
             "with a single supported field whose value is true, false, or null. Use null when "
             "that evidence is insufficient.",
         )
-        if decision is None:
-            return None
         return _validated_support(decision, used_codebase_tool)
 
 

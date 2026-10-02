@@ -83,21 +83,3 @@ def test_confidence_requires_successful_code_inspection(tmp_path) -> None:
     result = asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), ()))
 
     assert result.confidence is None
-
-
-def test_confidence_remains_unset_after_malformed_responses(tmp_path) -> None:
-    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
-    tool_call = ToolCall(id="read-1", name="read_file", arguments=json.dumps({"path": "agent.py"}))
-    llm = FakeLLMClient(
-        scripted_responses=[
-            _response("", [tool_call]),
-            _response("I rate this medium.", []),
-            _response('{"confidence": "medium"}', []),
-            _response("**med**", []),
-        ]
-    )
-
-    result = asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), ()))
-
-    assert result.confidence is None
-    assert llm.call_count == 4

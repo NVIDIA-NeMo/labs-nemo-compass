@@ -93,8 +93,7 @@ outcome is unknown. It does not depend on trace count or confidence.
 behavior, root cause, scope, and implied remediation. Enable it with
 [`confidence: true` or `--confidence`](configuration.md#one-run-overrides) and
 `code_base`. It is `low`, `med`, or `high`, and is omitted when code could not be
-inspected or the model could not produce a valid structured response after retries. Existing
-insights retain their saved ratings during compilation;
+inspected. Existing insights retain their saved ratings during compilation;
 confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
