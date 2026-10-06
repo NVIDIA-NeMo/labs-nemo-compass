@@ -5,74 +5,31 @@
 
 ![Status: Research Preview](https://img.shields.io/badge/Status-Research%20Preview-orange)
 
-Agent developers collect large numbers of execution traces, but finding a recurring,
-fixable problem in them is hard. NeMo Compass explores how to turn those traces into
-actionable findings, which we call **insights**, with links back to the executions
-that support each finding. It brings traces from existing observability tools into
-evidence streams that look for different kinds of problems.
+The goal of NeMo Compass is to efficiently find signals in agent traces that lead to meaningful improvements in quality, cost, safety, privacy, and/or user satisfaction. 
 
-For example, an insight might say:
+A critical input to improving any agent is understanding what it’s doing, especially once you turn it on in production. Evals often capture only a small subset of the tasks an agent actually needs to be good at. Agent developers have discovered that production trace analysis is an essential part of improving an agent, but today there's no standard for how this type of analysis gets validated and measured.
 
-> **Retries repeat the same invalid request.** After a tool rejects an argument,
-> the agent sends it again without correcting it. Seen in traces `run-12` and `run-38`.
+NeMo Compass is an applied research project with a goal of improving the tools and techniques available to developers for trace analysis at scale. It uses a range of techniques to identify different types of issues in a large set of traces, then summarizes findings as actionable insights. We call each of those discovery techniques "evidence streams."
 
-> [!WARNING]
+| Evidence Stream | Question It Answers | How It Works |
+| --- | --- | --- |
+| Anomaly Detection | What outlier behaviors exist in a set of agent traces? | Scores outliers with an Isolation Forest and reports feature-level deviations |
+| Tool Issues	| What recurring problems occur when the agent uses tools?	| Checks tool calls and results for invalid arguments, failures, missing results, and unproductive retries |
+| User Sentiment | What recurring complaints do users have about the agent? | Screens recorded human messages with a classifier, then reviews recurring complaints in context |
+| Ethos.md Divergence | Where does the agent’s behavior conflict with its stated rules and goals? | Compares traces with the agent’s ethos.md document and investigates possible gaps |
+| Evaluation Failures | What behaviors recur in traces with poor evaluation results? | Uses recorded scores and feedback to select traces, then investigates shared failure patterns |
+
+Learn more about each current evidence stream: [Architecture](docs/architecture.md)
+
+> [!IMPORTANT]
 > **Research preview**
 >
-> This is an early research example for experimentation and collaboration with
-> developers. Its APIs, configuration, and output formats may change without
-> backward compatibility. Findings require review against their supporting
+> NeMo Compass is an early-stage applied research project. 
+> Its APIs, configuration, and output formats may change without
+> backward compatibility. All findings should be reviewed against their supporting
 > traces before you act on them. This project is not intended for production use.
 
-We are sharing the implementation and techniques that have helped us find signal
-in agent traces. We want to learn which problems matter to other developers and
-which parts of this approach are useful in their own tools.
-
-## Questions we are exploring
-
-- How can we find recurring, fixable agent problems in trace stores containing
-  thousands or millions of executions?
-- How can we estimate how often a problem occurs and how much it matters without
-  asking an LLM to inspect every trace?
-- How can trace evidence, evaluation results, and read-only checks against agent
-  code help distinguish real problems from misleading patterns?
-- How should we measure whether an insight is correct, useful, and worth a
-  developer's time to investigate?
-
-This repository explores these questions through trace loaders, [evidence
-streams](docs/evidence-streams.md), and insight compilation. The [architecture
-guide](docs/architecture.md) explains what each part does and where judgment or
-coverage limits remain.
-
-## Contributing
-
-**This project is currently not accepting code contributions, pull requests, or
-GitHub issues from external contributors.** Please do not submit external pull
-requests or open issues, including bug reports and feature requests.
-
-For research feedback, use the channels described below. To report a security
-vulnerability, follow [SECURITY.md](SECURITY.md).
-
-## Help shape the research
-
-We are especially interested in feedback from teams building agent observability
-or evaluation platforms, and from developers investigating their own agents:
-
-- Which recurring issues are hardest to find today? What would make a finding
-  actionable: examples, frequency, estimated impact, or something else?
-- Where do the insights miss an important problem, group unrelated behavior,
-  or suggest a cause the traces do not support?
-- Which layer would you use in your own workflow: the full analyst, individual
-  evidence streams or trace loaders, or lower-level techniques such as embeddings
-  and retrieval? What would you need to integrate it?
-
-If an NVIDIA contact shared this preview with you, please send your feedback
-through that contact and ask them to route it to the NeMo Compass research team.
-Otherwise, use the [NVIDIA Developer contact form](https://developer.nvidia.com/contact)
-with **NeMo Compass research preview feedback** in the subject. Your role or
-platform, approximate trace volume, an anonymized example, and the part of the
-approach you would use are especially helpful. Please avoid sending raw traces,
-prompts, credentials, or user data in an initial message.
+We are sharing the implementation at this stage to encourage feedback and testing by others as we continue to improve on it.
 
 ## Start here
 
@@ -102,6 +59,50 @@ and restart your terminal.
 - [Configuration reference](docs/configuration.md) — overrides, limits, and repeatable runs.
 
 [Development](DEVELOPMENT.md) · [Architecture](docs/architecture.md)
+
+# Research Topics 
+
+## Questions we are exploring
+
+- How can developers efficiently find recurring, fixable agent problems in trace datasets containing
+  hundreds of thousands or millions of executions?
+- How can developers estimate how often a problem occurs and how much it matters without
+  asking an LLM to inspect every trace?
+- How can trace evidence, evaluation results, and read-only checks against agent
+  code help distinguish real problems from misleading patterns?
+- How should we measure whether an insight is correct, useful, and worth a
+  developer's time to investigate?
+
+This repository explores these questions. The [architecture
+guide](docs/architecture.md) explains what each part does and where judgment or
+coverage limits remain.
+
+## Help shape the direction
+
+We are especially interested in feedback from teams building agent observability
+or evaluation tools, and from developers investigating their own agents:
+
+- Which types of recurring issues are hardest to identify today?
+- How do you decide whether an identified issue matters to your agent?
+- What would make a finding more "actionable": examples, frequency, estimated impact, something else?
+- How would you ideally use these tools in your own workflows? What would you need to integrate it?
+- What types of additional insights or findings would be most valuable to you?
+
+If an NVIDIA contact shared this preview with you, please send your feedback
+through that contact and ask them to route it to the NeMo Compass research team.
+Otherwise, use the [NVIDIA Developer contact form](https://developer.nvidia.com/contact)
+with **NeMo Compass research preview feedback** in the subject. Please avoid sending raw traces,
+prompts, credentials, or user data.
+
+## Contributing
+
+**This project is currently not accepting code contributions, pull requests, or
+GitHub issues from external contributors.** Please do not submit external pull
+requests or open issues, including bug reports and feature requests.
+
+For research feedback, use the channels described below. To report a security
+vulnerability, follow [SECURITY.md](SECURITY.md).
+
 
 ## License
 
