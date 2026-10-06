@@ -3,7 +3,7 @@
 
 # Data and model access
 
-NeMo Compass needs an inference model to investigate traces and write insights.
+NeMo Compass needs an inference model to investigate traces and author insights.
 Its API key is separate from your Braintrust, LangSmith, Langfuse, MLflow, or Intake credentials.
 
 ## Choose a model
@@ -82,14 +82,14 @@ Loading a saved export does not require credentials for that trace platform.
 
 Return to your [source guide](../README.md#start-here) to finish setup.
 
-## Where data goes
+## How data gets used
 
 | When you use… | Data access |
 | --- | --- |
-| A live trace source | NeMo Compass reads traces and recorded evaluation signals from that service. |
+| A live trace source | NeMo Compass reads traces and recorded evaluation signals from the selected service. |
 | Model-based analysis | Trace content, evaluation signals, and candidate findings may be sent to your configured inference provider. |
-| An ethos document | Its contents are included in model-based analysis. |
-| Code validation | Selected source excerpts are sent to the inference provider. The validator has read-only file tools. |
+| An ethos.md document | Contents are included in model-based analysis and may be sent to your configured inference provider. |
+| Code validation | Selected source excerpts are sent to your selected inference provider. The validator has read-only file tools. |
 | Remote sentiment embeddings | Extracted user messages are sent to the configured embedding endpoint. |
 | Local sentiment embeddings | The embedding model runs on your machine; model and tokenizer files may download on first use. |
 
@@ -98,4 +98,4 @@ Using local trace files still requires inference access. There is no automatic r
 of trace content before analysis; choose inputs and endpoints appropriate for your data.
 
 The CLI writes insights to a local YAML file or stdout. It does not publish findings
-back to the trace platform. [Output details](results.md#saved-output).
+back to the trace platform. [Output details](results.md).
