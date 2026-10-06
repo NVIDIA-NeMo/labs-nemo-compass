@@ -9,7 +9,7 @@ The goal of NeMo Compass is to efficiently find signals in agent traces that lea
 
 A critical input to improving any agent is understanding what it’s doing, especially once you turn it on in production. Evals often capture only a small subset of the tasks an agent actually needs to be good at. Agent developers have discovered that production trace analysis is an essential part of improving an agent, but today there's no standard for how this type of analysis gets validated and measured.
 
-NeMo Compass is an applied research project with a goal of improving the tools and techniques available to developers for trace analysis at scale. It uses a range of techniques to identify different types of errors in a large set of traces, then summarizes findings as actionable insights. We call each of those discovery techniques "evidence streams."
+NeMo Compass is an applied research project with a goal of improving the tools and techniques available to developers for trace analysis at scale. It uses a range of techniques to identify different types of issues in a large set of traces, then summarizes findings as actionable insights. We call each of those discovery techniques "evidence streams."
 
 | Evidence Stream | Question It Answers | How It Works |
 | --- | --- | --- |
