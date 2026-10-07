@@ -89,5 +89,5 @@ existing_insights: previous-insights.yml
 output_path: updated-insights.yml
 ```
 
-Trace Analyst reconciles old and new findings into a complete collection.
+NeMo Compass reconciles old and new findings into a complete collection.
 See [output behavior](results.md#saved-output) before using the files in a pipeline.

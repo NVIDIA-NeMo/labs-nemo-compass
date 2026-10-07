@@ -17,6 +17,14 @@ class Problem(BaseModel):
 
     description: str = Field(min_length=1)
     supporting_trace_ids: tuple[str, ...] = Field(min_length=1)
+    candidate_trace_ids: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "All trace IDs the stream found for this problem. This list may include supporting_trace_ids. "
+            "The compiler must check these traces against the final insight. "
+            "Other matches may exist in the snapshot. An empty list means the stream supplied no candidate list."
+        ),
+    )
 
 
 class EvidenceStreamResult(BaseModel):

@@ -56,7 +56,7 @@ install command. Keep your source extra too. For LangSmith:
 
 ```bash
 uv tool install \
-  'insight-agent[langsmith,local-embedding] @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent[langsmith,local-embedding] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 insight-agent --config config.yaml --evidence-streams.user-sentiment.local-embeddings
 ```
 
@@ -80,7 +80,7 @@ Include Braintrust root-span scores, Langfuse scores, MLflow assessments, or Lan
 For canonical JSONL traces, populate `evaluator_results`.
 If you already record these, check that your selected traces and exports include them.
 
-Trace Analyst uses those signals to investigate recurring failures. It does not run
+NeMo Compass uses those signals to investigate recurring failures. It does not run
 your evaluation suite or create missing scores. Setup and export details live in your
 [source guide](../README.md#start-here).
 

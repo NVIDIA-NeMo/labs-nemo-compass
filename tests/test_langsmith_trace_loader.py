@@ -491,3 +491,27 @@ def test_live_source_link_uses_sdk_ui_url():
     loader = LangSmithTraceLoader(LangSmithTraceConfig(project_name="project"), client)
     assert root.app_path is not None
     assert next(iter(loader.load())).source_url == "https://ui.langsmith.test" + root.app_path
+
+
+@pytest.mark.parametrize("child_path", ["/o/acme/projects/p/r/child?trace_id=parent", None, ""])
+def test_span_links_use_each_sdk_run_url_at_any_depth(child_path):
+    runs = trace_runs()
+    tool, llm, root = runs
+    tool.parent_run_id = llm.id
+    for run in runs:
+        run._host_url = "https://regional.langsmith.test"
+    llm.app_path = "/o/acme/projects/p/r/llm"
+    tool.app_path = child_path
+    loader = LangSmithTraceLoader(
+        LangSmithTraceConfig(project_name="project"), client=FakeLangSmithClient([root], runs)
+    )
+    trace = next(iter(loader.load()))
+    root_span = trace.root_spans[0]
+    llm_span = root_span.children[0]
+    tool_span = llm_span.children[0]
+    assert root_span.source_url == root.url == trace.source_url
+    assert llm_span.id == str(LLM_ID)
+    assert llm_span.source_url == llm.url
+    assert tool_span.id == str(TOOL_ID)
+    assert tool_span.source_url == (tool.url if child_path else None)
+    assert llm_span.source_url != trace.source_url

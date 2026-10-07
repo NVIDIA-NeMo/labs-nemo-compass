@@ -12,7 +12,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 No Braintrust extra is required. [Configure your inference model and key](../model-access.md#choose-a-model).
@@ -71,14 +71,15 @@ Add your organization name (as it appears in your Braintrust browser URL) to `.e
 BRAINTRUST_ORG_NAME=your-org-name
 ```
 
-This enables links to the root event in saved insights and the terminal report.
+This enables trace links and links to specific supporting spans when an insight
+identifies them, in both saved insights and the terminal report.
 Set `BRAINTRUST_APP_URL` if your UI uses a different host; the default is
 `https://www.braintrust.dev`. This is separate from the API endpoint.
 The YAML fields `org_name` and `app_url` under `trace.braintrust` override these variables.
 Without an organization name, output retains trace IDs without links.
 
 The loader follows Braintrust’s [documented event permalink format](https://www.braintrust.dev/docs/kb/creating-permalinks-to-log-events-via-api),
-using the root event’s row ID for both project logs and experiments.
+using each referenced event’s row ID for both project logs and experiments.
 
 ## What is preserved
 

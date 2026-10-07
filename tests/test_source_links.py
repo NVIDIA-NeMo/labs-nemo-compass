@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-from io import StringIO
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -11,10 +9,8 @@ import pytest
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
-from rich.console import Console
 from trace_ingest.source_links import http_source_url
 
-from insight_agent.cli.output import RunOutput, RunResult
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.trace_loaders.fs import FSDataLoader
@@ -53,53 +49,40 @@ def test_jsonl_links_use_source_file_and_count_physical_lines(tmp_path):
 
 
 def test_links_are_resolved_from_sources_and_existing_artifacts_only(tmp_path):
-    old = Insight(
-        name="Issue",
-        description="Details",
-        trace_refs=["old", "current"],
-        trace_links={"old": "https://old.test/trace", "current": "https://stale.test/trace"},
+    old = Insight.model_validate(
+        {
+            "name": "Issue",
+            "description": "Details",
+            "evidence": [
+                {"trace_id": "old", "url": "https://old.test/trace"},
+                {"trace_id": "current", "url": "https://stale.test/trace"},
+            ],
+        }
     )
-    generated = old.model_copy(
-        update={
-            "trace_refs": ["old", "current", "missing", "no-link"],
-            "trace_links": {"missing": "https://invented.test/trace"},
+    generated = Insight.model_validate(
+        {
+            "name": old.name,
+            "description": old.description,
+            "evidence": [
+                {"trace_id": "old"},
+                {"trace_id": "current"},
+                {"trace_id": "missing", "url": "https://invented.test/trace"},
+                {"trace_id": "no-link"},
+            ],
         }
     )
     snapshot = TraceSnapshot([trace("current", "https://current.test/trace"), trace("no-link")])
     [resolved] = resolve_trace_links([generated], snapshot, [old])
-    assert resolved.trace_refs == generated.trace_refs
-    assert resolved.trace_links == {
+    assert [item.trace_id for item in resolved.evidence] == [
+        item.trace_id for item in generated.evidence
+    ]
+    assert {item.trace_id: item.url for item in resolved.evidence if item.url} == {
         "old": "https://old.test/trace",
         "current": "https://current.test/trace",
     }
     path = tmp_path / "insights.yml"
     path.write_text(yaml.safe_dump([resolved.model_dump()]))
     assert load_insights(path) == [resolved]
-    path.write_text(
-        yaml.safe_dump([{"name": "Legacy", "description": "Details", "trace_refs": ["a", "b"]}])
-    )
-    assert "trace_links" not in load_insights(path)[0].model_dump()
-
-
-@pytest.mark.parametrize("terminal", [False, True])
-def test_terminal_links_and_plain_logs(terminal, monkeypatch):
-    monkeypatch.setenv("TERM", "xterm-256color")
-    stream = StringIO()
-    insight = Insight(
-        name="Issue [literal]",
-        description="Details",
-        trace_refs=["a", "b"],
-        trace_links={"a": "https://provider.test/trace/a"},
-    )
-    RunOutput(Console(file=stream, force_terminal=terminal, width=120)).report(
-        RunResult(2, [], [insight]), Path("-")
-    )
-    rendered = stream.getvalue()
-    assert "https://provider.test/trace/a" in rendered
-    assert "Issue [literal]" in rendered and "  b" in rendered
-    assert ("\x1b]8;" in rendered) == terminal
-    if not terminal:
-        assert "\x1b" not in rendered
 
 
 def test_cli_saves_and_prints_loader_links_after_compilation(
@@ -109,11 +92,15 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
 
     path = tmp_path / "traces.jsonl"
     path.write_text(trace("a").model_dump_json() + "\n" + trace("b").model_dump_json())
-    insight = Insight(
-        name="Repeated failure",
-        description="Details",
-        trace_refs=["a", "b"],
-        trace_links={"a": "https://invented.test/trace"},
+    insight = Insight.model_validate(
+        {
+            "name": "Repeated failure",
+            "description": "Details",
+            "evidence": [
+                {"trace_id": "a", "url": "https://invented.test/trace"},
+                {"trace_id": "b"},
+            ],
+        }
     )
     monkeypatch.setattr(cli, "_check_environment", lambda config: "test-key")
     monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
@@ -150,7 +137,188 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
     )
     captured = capsys.readouterr()
     [saved] = load_insights(output)
-    assert saved.trace_links == {"a": path.as_uri() + "#L1", "b": path.as_uri() + "#L2"}
+    assert {item.trace_id: item.url for item in saved.evidence if item.url} == {
+        "a": path.as_uri() + "#L1",
+        "b": path.as_uri() + "#L2",
+    }
     assert yaml.safe_load(captured.out) == [saved.model_dump()]
     assert "invented.test" not in captured.out + captured.err
-    assert saved.trace_links["a"] in captured.err
+    assert "file://" not in captured.err
+
+
+def test_span_resolution_handles_nested_multiple_and_unknown_spans():
+    from insight_agent.traces import Span, SpanKind
+
+    a = trace("a", "https://ui.test/trace")
+    a.root_spans = [
+        Span(
+            id="root",
+            kind=SpanKind.AGENT,
+            children=[
+                Span(
+                    id="child",
+                    kind=SpanKind.CHAIN,
+                    children=[
+                        Span(id="leaf", kind=SpanKind.TOOL, source_url="https://ui.test/leaf")
+                    ],
+                )
+            ],
+        )
+    ]
+    b = trace("b")
+    b.root_spans = [Span(id="leaf", kind=SpanKind.TOOL, source_url="https://ui.test/other-leaf")]
+    insight = Insight.model_validate(
+        {
+            "name": "Issue",
+            "description": "Details",
+            "evidence": [
+                {
+                    "trace_id": "a",
+                    "spans": [
+                        {"span_id": "leaf", "url": "https://invented.test"},
+                        {"span_id": "child"},
+                        {"span_id": "leaf", "url": "https://invented.test"},
+                        {"span_id": "invented"},
+                    ],
+                },
+                {"trace_id": "b", "spans": [{"span_id": "leaf"}]},
+            ],
+        }
+    )
+    [resolved] = resolve_trace_links([insight], TraceSnapshot([a, b]))
+    assert {
+        item.trace_id: [span.span_id for span in item.spans]
+        for item in resolved.evidence
+        if item.spans
+    } == {"a": ["leaf", "child"], "b": ["leaf"]}
+    assert {
+        item.trace_id: {span.span_id: span.url for span in item.spans if span.url}
+        for item in resolved.evidence
+        if any(span.url for span in item.spans)
+    } == {
+        "a": {"leaf": "https://ui.test/leaf"},
+        "b": {"leaf": "https://ui.test/other-leaf"},
+    }
+    assert {item.trace_id: item.url for item in resolved.evidence if item.url} == {
+        "a": "https://ui.test/trace"
+    }
+    assert {
+        item.trace_id: {span.span_id: span.url for span in item.spans if span.url}
+        for item in insight.evidence
+        if any(span.url for span in item.spans)
+    }["a"]["leaf"] == "https://invented.test"
+
+
+def test_historical_span_links_only_survive_for_absent_traces():
+    old = Insight.model_validate(
+        {
+            "name": "Issue",
+            "description": "Details",
+            "evidence": [
+                {"trace_id": "a", "spans": [{"span_id": "leaf", "url": "https://old.test/a"}]},
+                {"trace_id": "b", "spans": [{"span_id": "leaf", "url": "https://old.test/b"}]},
+            ],
+        }
+    )
+    [resolved] = resolve_trace_links([old], TraceSnapshot([trace("a")]), [old])
+    assert {
+        item.trace_id: [span.span_id for span in item.spans]
+        for item in resolved.evidence
+        if item.spans
+    } == {"b": ["leaf"]}
+    assert {
+        item.trace_id: {span.span_id: span.url for span in item.spans if span.url}
+        for item in resolved.evidence
+        if any(span.url for span in item.spans)
+    } == {"b": {"leaf": "https://old.test/b"}}
+
+
+def test_span_fields_are_optional_and_jsonl_does_not_accept_provider_links(tmp_path):
+    from insight_agent.traces import Span, SpanKind
+
+    item = trace("a")
+    item.root_spans = [Span(id="leaf", kind=SpanKind.TOOL, source_url="https://supplied.test")]
+    path = tmp_path / "traces.jsonl"
+    path.write_text(item.model_dump_json())
+    loaded = next(iter(FSDataLoader(path).load()))
+    assert loaded.root_spans[0].source_url is None
+    assert "source_url" not in loaded.root_spans[0].model_dump()
+    insight = Insight.model_validate(
+        {
+            "name": "Issue",
+            "description": "Details",
+            "evidence": [{"trace_id": "a"}, {"trace_id": "b"}],
+        }
+    )
+    assert "span_refs" not in insight.model_dump()
+    assert "span_links" not in insight.model_dump()
+
+
+def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_streams):
+    from insight_agent.cli import main as cli
+    from insight_agent.traces import Span, SpanKind
+
+    a = trace("a", "https://provider.test/trace")
+    a.root_spans = [Span(id="tool", kind=SpanKind.TOOL, source_url="https://provider.test/span")]
+    snapshot = TraceSnapshot([a, trace("b")])
+    insight = Insight.model_validate(
+        {
+            "name": "Issue",
+            "description": "Details",
+            "evidence": [
+                {"trace_id": "a", "spans": [{"span_id": "tool", "url": "https://invented.test"}]},
+                {"trace_id": "b"},
+            ],
+        }
+    )
+    monkeypatch.setattr(cli, "_check_environment", lambda config: "fake")
+    monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
+    monkeypatch.setattr(
+        cli, "_configured_trace_loader", lambda config: SimpleNamespace(load=lambda: snapshot)
+    )
+    monkeypatch.setattr(
+        cli,
+        "_run_evidence_streams",
+        AsyncMock(
+            return_value=[
+                EvidenceStreamResult(
+                    stream_name="tool-issues",
+                    problems=(Problem(description="Failure", supporting_trace_ids=("a", "b")),),
+                )
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "InsightCompilation",
+        lambda **kwargs: SimpleNamespace(compile_insights=AsyncMock(return_value=[insight])),
+    )
+    output = tmp_path / "insights.yml"
+    assert (
+        cli.main(
+            [
+                "--trace.filesystem.path",
+                "unused.jsonl",
+                "--output-path",
+                str(output),
+                "--evidence-streams",
+                json.dumps(select_streams(tool_issues={})),
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    [saved] = load_insights(output)
+    assert {
+        item.trace_id: [span.span_id for span in item.spans]
+        for item in saved.evidence
+        if item.spans
+    } == {"a": ["tool"]}
+    assert {
+        item.trace_id: {span.span_id: span.url for span in item.spans if span.url}
+        for item in saved.evidence
+        if any(span.url for span in item.spans)
+    } == {"a": {"tool": "https://provider.test/span"}}
+    assert "https://provider.test/span" not in captured.err
+    assert yaml.safe_load(captured.out) == [saved.model_dump()]
+    assert "invented.test" not in captured.out + captured.err

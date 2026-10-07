@@ -4,34 +4,97 @@
 from io import StringIO
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 
 from insight_agent.cli.output import RunOutput, RunResult
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.insight import Insight
 
 
-def test_report_separates_completed_and_skipped_analyses():
-    stream = StringIO()
-    output = RunOutput(Console(file=stream))
-    output.report(
-        RunResult(
-            10,
-            [
-                EvidenceStreamResult(
-                    stream_name="tool-issues", problems=(), limitations=("Missing schemas",)
-                ),
-                EvidenceStreamResult(
-                    stream_name="ethos-divergence", problems=(), skip_reason="No ethos document"
-                ),
+def make_insight(name="Agent calls tools absent from the active catalog"):
+    return Insight.model_validate(
+        {
+            "name": name,
+            "description": "A long explanation that belongs in the saved report.",
+            "evidence": [
+                {"trace_id": f"trace-{i}", "spans": [{"span_id": f"span-{i}"}]} for i in range(3)
             ],
-            [],
-        ),
-        Path("insights.yml"),
+        }
     )
 
-    completed, skipped = stream.getvalue().split("Skipped")
-    assert "Completed" in completed and "Tool issues" in completed
-    assert "Missing schemas" in completed and "Ethos divergence" not in completed
-    assert "Ethos divergence" in skipped and "No ethos document" in skipped
-    assert "evidence_streams to false" in skipped and "docs/evidence-streams.md" in skipped
-    assert "Saved:" not in skipped
+
+@pytest.mark.parametrize("width", [40, 80])
+def test_default_report_prioritizes_findings_and_keeps_coverage_visible(width):
+    stream = StringIO()
+    result = RunResult(
+        200,
+        [
+            *[
+                EvidenceStreamResult(
+                    stream_name=name,
+                    problems=tuple(
+                        Problem(description=f"Candidate {i}", supporting_trace_ids=("trace-0",))
+                        for i in range(candidates)
+                    ),
+                    limitations=("Missing schemas",) if name == "tool-issues" else (),
+                )
+                for name, candidates in (("anomaly-and-patterns", 5), ("tool-issues", 3))
+            ],
+            *[
+                EvidenceStreamResult(stream_name=name, problems=(), skip_reason=reason)
+                for name, reason in (
+                    ("ethos-divergence", "No ethos document"),
+                    ("eval-failure-patterns", "No evaluator results"),
+                    ("user-sentiment", "No embedding backend configured"),
+                )
+            ],
+        ],
+        [
+            make_insight(),
+            make_insight("Retries repeat [invalid] requests"),
+            make_insight("False success"),
+        ],
+    )
+    RunOutput(Console(file=stream, width=width)).report(result, Path("insights.yml"))
+    rendered = stream.getvalue()
+    assert "3 insights from 200 traces" in rendered
+    assert rendered.count("Evidence: 3 supporting traces") == 3
+    assert "2. Retries repeat [invalid] requests" in " ".join(rendered.split())
+    assert rendered.index("3. False success") < rendered.index("Ran:") < rendered.index("Saved:")
+    normalized = " ".join(rendered.split())
+    assert (
+        "Ran: Anomalies and patterns (5 candidates), tool issues (3 candidates; Missing schemas)"
+        in normalized
+    )
+    assert (
+        "Skipped: Ethos — no document Evaluation — no results Sentiment — no embedding backend"
+        in normalized
+    )
+    assert (
+        "To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md"
+        in rendered
+    )
+    for hidden in ("trace-0", "span-0", "long explanation", "\x1b"):
+        assert hidden not in rendered
+    # Keep the setup URL intact for copying; other content wraps to the terminal width.
+    assert all(len(line) <= width for line in rendered.splitlines() if "https://" not in line)
+
+
+def test_report_lists_all_insights_in_order_and_omits_irrelevant_guidance():
+    insights = [make_insight(f"Issue {i}") for i in range(6)]
+    result = RunResult(
+        200,
+        [EvidenceStreamResult(stream_name="tool-issues", problems=(), finding_count=2)],
+        insights,
+    )
+    stream = StringIO()
+    RunOutput(Console(file=stream, width=120)).report(result, Path("-"))
+    rendered = stream.getvalue()
+    assert [line for line in rendered.splitlines() if ". Issue" in line] == [
+        f"{i + 1}. Issue {i}" for i in range(6)
+    ]
+    assert "Tool issues (2 findings; no candidates)" in rendered
+    assert "Skipped" not in rendered and "To run skipped analyses" not in rendered
+    assert "Saved:" not in rendered
+    assert result.insights == insights

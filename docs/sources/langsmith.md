@@ -15,7 +15,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI with La
 
 ```bash
 uv tool install \
-  'insight-agent[langsmith] @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent[langsmith] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 [Configure your inference model and key](../model-access.md#choose-a-model).
@@ -41,6 +41,10 @@ insight-agent --config config.yaml
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
 for help with findings or skipped evidence streams.
+
+When an insight identifies specific supporting spans, links open their individual
+LangSmith runs. If a run URL is unavailable, the report retains the trace link
+and span ID.
 
 ## Narrow the input
 
