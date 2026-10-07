@@ -4,9 +4,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 from insight_agent.config import EvidenceStreamsConfig, RunConfig
 
 
@@ -74,43 +71,15 @@ def test_cli_accepts_optional_code_base() -> None:
     assert config.code_base == Path("../agent-source")
 
 
-def test_cli_accepts_confidence_with_code_base() -> None:
-    config = RunConfig(
-        _cli_parse_args=[
-            "--trace.filesystem.path",
-            "traces.jsonl",
-            "--code-base",
-            "../agent-source",
-            "--confidence",
-        ]
-    )
-
-    assert config.confidence is True
-
-
-def test_confidence_requires_code_base() -> None:
-    with pytest.raises(ValidationError, match="confidence requires code_base"):
-        RunConfig(_cli_parse_args=["--trace.filesystem.path", "traces.jsonl", "--confidence"])
-
-
-def test_confidence_is_opt_in_even_with_code_base() -> None:
-    config = RunConfig(
-        _cli_parse_args=["--trace.filesystem.path", "traces.jsonl", "--code-base", "../agent"]
-    )
-
-    assert config.confidence is False
-
-
-def test_yaml_enables_confidence_review(tmp_path: Path) -> None:
+def test_yaml_accepts_code_base(tmp_path: Path) -> None:
     config_path = tmp_path / "analyst.yaml"
     config_path.write_text(
-        "trace:\n  filesystem:\n    path: traces.jsonl\ncode_base: ../my-agent\nconfidence: true\n",
+        "trace:\n  filesystem:\n    path: traces.jsonl\ncode_base: ../my-agent\n",
         encoding="utf-8",
     )
 
     config = RunConfig(_cli_parse_args=["--config", str(config_path)])
 
-    assert config.confidence is True
     assert config.code_base == Path("../my-agent")
 
 

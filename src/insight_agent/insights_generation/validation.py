@@ -5,13 +5,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from nooa.agentdoc import truncating_pformat
+from nooa.unifiedllm import UnifiedLLM
 from pydantic import BaseModel, ConfigDict
 
 from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.insights_generation.investigation import CodebaseInvestigation
+from insight_agent.insights_generation.investigation import codebase_tools, investigate
 from insight_agent.traces import Trace
 
 _MAX_TRACE_CONTEXT_CHARS = 100_000
@@ -69,13 +71,19 @@ def _validation_messages(
     ]
 
 
-class ProblemValidation(CodebaseInvestigation):
+class ProblemValidation:
     """Validate trace-derived Problems using confined, read-only codebase access."""
+
+    def __init__(self, code_base_path: Path, llm: UnifiedLLM) -> None:
+        self._llm = llm
+        self._tools = codebase_tools(code_base_path)
 
     async def is_supported(
         self, problem: Problem, supporting_traces: tuple[Trace, ...]
     ) -> bool | None:
-        decision, used_codebase_tool = await self.investigate(
+        decision, used_codebase_tool = await investigate(
+            self._llm,
+            self._tools,
             _validation_messages(problem, supporting_traces),
             _SupportDecision,
             "Stop investigating. Using the evidence already collected, return only a JSON object "

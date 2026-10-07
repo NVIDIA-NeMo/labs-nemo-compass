@@ -29,7 +29,7 @@ def _insight() -> Insight:
     return Insight(
         name="Requests time out too quickly",
         description="The agent's HTTP client times out before slow tools can respond.",
-        trace_refs=["t1", "t2"],
+        evidence=[{"trace_id": "t1"}, {"trace_id": "t2"}],
     )
 
 
@@ -67,19 +67,3 @@ def test_insight_confidence_can_be_low_after_code_inspection(tmp_path) -> None:
 
     assert result.confidence == "low"
     assert llm.call_count == 2
-
-
-def test_confidence_requires_successful_code_inspection(tmp_path) -> None:
-    tool_call = ToolCall(
-        id="missing", name="read_file", arguments=json.dumps({"path": "missing.py"})
-    )
-    llm = FakeLLMClient(
-        scripted_responses=[
-            _response("", [tool_call]),
-            _response('{"confidence": "high"}', []),
-        ]
-    )
-
-    result = asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), ()))
-
-    assert result.confidence is None

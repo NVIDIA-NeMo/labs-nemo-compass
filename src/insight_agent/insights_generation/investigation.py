@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any, TypeVar
 
-from nooa import Agent
 from nooa.unifiedllm import Tool, ToolCall, UnifiedLLM, create_tool_from_callable
 from pydantic import BaseModel
 
@@ -45,71 +44,63 @@ def _with_output_contract(
     return prompted_messages
 
 
-class CodebaseInvestigation(Agent):
-    """Run one structured investigation with confined, read-only repository tools."""
+def codebase_tools(code_base_path: Path) -> list[Tool]:
+    """Read-only tools confined to one codebase."""
 
-    def __init__(
-        self,
-        code_base_path: Path,
-        llm: UnifiedLLM,
-        *,
-        max_tool_rounds: int = _MAX_TOOL_ROUNDS,
-    ) -> None:
-        super().__init__(llm=llm)
-        codebase = CodebaseTools(code_base_path)
-        self._tools: list[Tool] = [
-            create_tool_from_callable(codebase.list_files),
-            create_tool_from_callable(codebase.search_code),
-            create_tool_from_callable(codebase.read_file),
-        ]
-        self._tools_by_name = {tool.name: tool for tool in self._tools}
-        self._max_tool_rounds = max_tool_rounds
+    codebase = CodebaseTools(code_base_path)
+    return [
+        create_tool_from_callable(codebase.list_files),
+        create_tool_from_callable(codebase.search_code),
+        create_tool_from_callable(codebase.read_file),
+    ]
 
-    def _execute_tool_call(self, tool_call: ToolCall) -> tuple[Any, bool]:
-        tool = self._tools_by_name.get(tool_call.name)
-        if tool is None:
-            return {"error": f"unknown tool: {tool_call.name}"}, False
 
-        try:
-            arguments = json.loads(tool_call.arguments)
-            return tool.callable(**arguments), True
-        except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            return {"error": str(exc)}, False
+def _execute_tool_call(tools_by_name: dict[str, Tool], tool_call: ToolCall) -> tuple[Any, bool]:
+    tool = tools_by_name.get(tool_call.name)
+    if tool is None:
+        return {"error": f"unknown tool: {tool_call.name}"}, False
 
-    async def investigate(
-        self,
-        messages: list[dict[str, Any]],
-        output_model: type[ResultT],
-        final_prompt: str,
-    ) -> tuple[ResultT, bool]:
-        """Return the structured result and whether a repository tool succeeded."""
+    try:
+        arguments = json.loads(tool_call.arguments)
+        return tool.callable(**arguments), True
+    except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return {"error": str(exc)}, False
 
-        messages = _with_output_contract(messages, output_model)
-        used_codebase_tool = False
-        for _ in range(self._max_tool_rounds):
-            response = await self.llm.acall(
-                messages,
-                tools=self._tools,
-                output_model=output_model,
+
+async def investigate(
+    llm: UnifiedLLM,
+    tools: list[Tool],
+    messages: list[dict[str, Any]],
+    output_model: type[ResultT],
+    final_prompt: str,
+    *,
+    max_tool_rounds: int = _MAX_TOOL_ROUNDS,
+) -> tuple[ResultT, bool]:
+    """Return the structured result and whether a repository tool succeeded."""
+
+    tools_by_name = {tool.name: tool for tool in tools}
+    messages = _with_output_contract(messages, output_model)
+    used_codebase_tool = False
+    for _ in range(max_tool_rounds):
+        response = await llm.acall(messages, tools=tools, output_model=output_model)
+        if not response.tool_calls:
+            return _structured_result(response.content, output_model), used_codebase_tool
+
+        messages.append(response.assistant_message)
+        for tool_call in response.tool_calls:
+            result, succeeded = _execute_tool_call(tools_by_name, tool_call)
+            used_codebase_tool |= succeeded
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result, ensure_ascii=False),
+                }
             )
-            if not response.tool_calls:
-                return _structured_result(response.content, output_model), used_codebase_tool
 
-            messages.append(response.assistant_message)
-            for tool_call in response.tool_calls:
-                result, succeeded = self._execute_tool_call(tool_call)
-                used_codebase_tool |= succeeded
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result, ensure_ascii=False),
-                    }
-                )
-
-        messages.append({"role": "user", "content": final_prompt})
-        response = await self.llm.acall(messages, output_model=output_model)
-        return _structured_result(response.content, output_model), used_codebase_tool
+    messages.append({"role": "user", "content": final_prompt})
+    response = await llm.acall(messages, output_model=output_model)
+    return _structured_result(response.content, output_model), used_codebase_tool
 
 
-__all__ = ["CodebaseInvestigation"]
+__all__ = ["codebase_tools", "investigate"]

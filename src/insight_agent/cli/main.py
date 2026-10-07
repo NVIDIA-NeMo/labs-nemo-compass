@@ -310,7 +310,7 @@ async def _rate_confidence_with_code(
     async def rate_insight(insight: Insight) -> Insight:
         supporting_traces = tuple(
             trace
-            for trace in (supporting_trace(ref) for ref in insight.trace_refs)
+            for trace in (supporting_trace(item.trace_id) for item in insight.evidence)
             if trace is not None
         )
         rating = await rater.rate(insight, supporting_traces)
@@ -375,8 +375,7 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
                 config, api_key, snapshot, result, output, run_timestamp
             )
         result.insights = resolve_trace_links(result.insights, snapshot, existing)
-        if config.confidence and result.insights:
-            assert config.code_base is not None
+        if config.code_base is not None and result.insights:
             output.activity = "Investigating insight confidence against the codebase"
             async with _build_llm(config, api_key) as llm:
                 result.insights = await _rate_confidence_with_code(

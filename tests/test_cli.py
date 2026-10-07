@@ -268,7 +268,7 @@ def test_confidence_rating_preserves_compiled_severity(tmp_path, monkeypatch) ->
     insight = Insight(
         name="Timeouts",
         description="Tools time out.",
-        trace_refs=["trace-1", "missing"],
+        evidence=[{"trace_id": "trace-1"}, {"trace_id": "missing"}],
         severity="high",
     )
     received = []
@@ -293,9 +293,9 @@ def test_confidence_rating_preserves_compiled_severity(tmp_path, monkeypatch) ->
     assert insight.confidence is None
 
 
-@pytest.mark.parametrize("confidence", [False, True])
-def test_final_compilation_severity_does_not_require_confidence(
-    tmp_path, monkeypatch, confidence
+@pytest.mark.parametrize("with_code_base", [False, True])
+def test_final_compilation_severity_does_not_require_code_base(
+    tmp_path, monkeypatch, with_code_base
 ) -> None:
     from rich.console import Console
 
@@ -310,7 +310,7 @@ def test_final_compilation_severity_does_not_require_confidence(
     insight = Insight(
         name="Timeout",
         description="The task never completes.",
-        trace_refs=["trace-1", "trace-2"],
+        evidence=[{"trace_id": "trace-1"}, {"trace_id": "trace-2"}],
         severity="high",
     )
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[insight]))
@@ -326,16 +326,15 @@ def test_final_compilation_severity_does_not_require_confidence(
     monkeypatch.setattr(cli, "_rate_confidence_with_code", review)
     config = RunConfig(
         trace={"filesystem": {"path": "traces.jsonl"}},
-        confidence=confidence,
-        code_base=tmp_path if confidence else None,
+        code_base=tmp_path if with_code_base else None,
     )
 
     result = asyncio.run(cli._generate_insights(config, cli.RunOutput(Console(quiet=True))))
 
     compilation.compile_insights.assert_awaited_once()
     assert result.insights[0].severity == "high"
-    assert result.insights[0].confidence == ("high" if confidence else None)
-    assert review.await_count == int(confidence)
+    assert result.insights[0].confidence == ("high" if with_code_base else None)
+    assert review.await_count == int(with_code_base)
 
 
 def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):

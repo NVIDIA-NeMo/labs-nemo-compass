@@ -109,10 +109,9 @@ Final compilation assigns it to new insights by default; it is omitted when the
 outcome is unknown. It does not depend on trace count or confidence.
 
 `confidence` describes how well source investigation supports the insight's
-behavior, root cause, scope, and implied remediation. Enable it with
-[`confidence: true` or `--confidence`](configuration.md#one-run-overrides) and
-`code_base`. It is `low`, `med`, or `high`, and is omitted when code could not be
-inspected. Existing insights retain their saved ratings during compilation;
+behavior, root cause, scope, and implied remediation. It is set when
+[`code_base`](configuration.md#code-aware-review) is configured, is `low`, `med`, or `high`,
+and is omitted otherwise. Existing insights retain their saved ratings during compilation;
 confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it

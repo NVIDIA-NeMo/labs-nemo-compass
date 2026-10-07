@@ -27,7 +27,7 @@ cannot resolve. Compilation then merges the retained evidence into insights, att
 trace references, and assigns severity from observed consequences and recovery independently of
 occurrence count.
 
-When `confidence: true` or `--confidence` is also enabled, a [second code-aware
+When `code_base` is configured, a [second code-aware
 review](../src/insight_agent/insights_generation/confidence.py) runs after compilation. It evaluates
 each final insight’s behavior, root cause, scope, and implied remediation, assigning confidence
 without changing severity. Validation and confidence use the same read-only investigation engine,

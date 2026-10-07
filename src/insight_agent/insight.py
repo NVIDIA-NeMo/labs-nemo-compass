@@ -53,7 +53,7 @@ class Insight(BaseModel):
     confidence: Rating | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
-        description="How well the codebase supports this insight's claim; set by --confidence.",
+        description="How well the codebase supports this insight's claim; set when code_base is configured.",
     )
     severity: Rating | None = Field(
         default=None,

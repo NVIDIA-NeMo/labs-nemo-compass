@@ -8,6 +8,5 @@ trace:
 max_tokens: 16384
 
 # Severity is assigned during final compilation from trace outcomes by default.
-# To enable optional confidence review, add both settings to this config file:
+# To enable code-aware validation and confidence review, set the agent's source directory:
 # code_base: ../my-agent
-# confidence: true

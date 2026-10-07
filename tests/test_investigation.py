@@ -9,7 +9,7 @@ import json
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 from pydantic import BaseModel
 
-from insight_agent.insights_generation.investigation import CodebaseInvestigation
+from insight_agent.insights_generation.investigation import codebase_tools, investigate
 
 
 class _Decision(BaseModel):
@@ -47,8 +47,12 @@ def test_investigation_runs_codebase_tools_and_returns_structured_result(tmp_pat
     )
 
     result, used_codebase_tool = asyncio.run(
-        CodebaseInvestigation(tmp_path, llm).investigate(
-            _messages(), _Decision, "Return a decision."
+        investigate(
+            llm,
+            codebase_tools(tmp_path),
+            _messages(),
+            _Decision,
+            "Return a decision.",
         )
     )
 
@@ -63,8 +67,12 @@ def test_investigation_adds_output_contract_when_no_system_message(tmp_path) -> 
     llm = FakeLLMClient(scripted_responses=[_response('{"accepted": true}', [])])
 
     result, _ = asyncio.run(
-        CodebaseInvestigation(tmp_path, llm).investigate(
-            _messages(), _Decision, "Return a decision."
+        investigate(
+            llm,
+            codebase_tools(tmp_path),
+            _messages(),
+            _Decision,
+            "Return a decision.",
         )
     )
 
@@ -88,8 +96,12 @@ def test_investigation_reports_failed_tool_calls(tmp_path) -> None:
     )
 
     result, used_codebase_tool = asyncio.run(
-        CodebaseInvestigation(tmp_path, llm).investigate(
-            _messages(), _Decision, "Return a decision."
+        investigate(
+            llm,
+            codebase_tools(tmp_path),
+            _messages(),
+            _Decision,
+            "Return a decision.",
         )
     )
 
@@ -112,8 +124,13 @@ def test_investigation_forces_structured_result_after_tool_limit(tmp_path) -> No
     )
 
     result, used_codebase_tool = asyncio.run(
-        CodebaseInvestigation(tmp_path, llm, max_tool_rounds=1).investigate(
-            _messages(), _Decision, "Return a decision."
+        investigate(
+            llm,
+            codebase_tools(tmp_path),
+            _messages(),
+            _Decision,
+            "Return a decision.",
+            max_tool_rounds=1,
         )
     )
 
