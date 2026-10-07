@@ -69,7 +69,17 @@ filter: '[{"type":"string","column":"environment","operator":"=","value":"produc
 - **v3:** The window and filters select trace records, newest trace timestamp first.
 - **v4:** The window and filters select observations (individual steps), newest observation
   start time first. Compass takes distinct trace IDs, then loads all observations for
-  each selected trace, including steps outside the selection window or filter.
+  each selected trace within that same time window, without reapplying the selection
+  filter. Both selection and detail reads include time bounds to avoid expensive
+  all-history queries on Langfuse v4.
+
+V4 traces can be partial at the window boundaries: steps starting before the start
+or at/after the end are excluded, even if they belong to a selected trace. Choose a
+window covering the entire execution when you need all its steps. Each loaded v4
+trace records this scope in `attributes.observation_window`; reported costs and
+latency describe the loaded steps. Missing parents are reported, but a missing child
+or sibling cannot always be detected. Narrowing the window reduces query work but
+also reduces the evidence available to Compass.
 
 In v4, `filter` uses the [Observations API v2 columns and operators](https://langfuse.com/docs/api-and-data-platform/features/public-api#query-parameters-and-filters).
 For example, `name` means an observation's name; use `traceName` for the trace name,

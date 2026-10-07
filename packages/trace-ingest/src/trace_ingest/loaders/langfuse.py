@@ -109,7 +109,7 @@ def validate_langfuse_time_window(from_timestamp: datetime, to_timestamp: dateti
 
 @dataclass
 class LangfuseTraceLoader:
-    """Load a bounded selection of complete traces from one Langfuse project.
+    """Load a bounded selection of traces from one Langfuse project.
 
     Langfuse API credentials identify the project. A client can be injected for
     tests; otherwise the optional SDK is imported only when this loader runs.
@@ -219,10 +219,13 @@ class LangfuseTraceLoader:
             cursor = None
             seen_cursors = set()
             while True:
-                # Fetch by selected ID without the selection window/filter. A trace
-                # can cross either boundary; clipping here would lose its evidence.
+                # Keep the time bounds so Langfuse can prune its time partitions.
+                # Drop the selection filter to retain other steps of the selected
+                # trace inside this window.
                 response = client.api.observations.get_many(
                     trace_id=trace_id,
+                    from_start_time=self.config.from_timestamp,
+                    to_start_time=self.config.to_timestamp,
                     fields="core,basic,io,metadata,model,usage,prompt,trace_context",
                     limit=_API_PAGE_SIZE,
                     cursor=cursor,
@@ -251,7 +254,13 @@ class LangfuseTraceLoader:
                 )
                 if cursor is None:
                     break
-            traces.append(_normalize_v4_trace(trace_id, observations, scores, base_url))
+            trace = _normalize_v4_trace(trace_id, observations, scores, base_url)
+            trace.attributes["observation_window"] = {
+                "from_timestamp": self.config.from_timestamp.isoformat(),
+                "to_timestamp": self.config.to_timestamp.isoformat(),
+                "may_exclude_trace_steps": True,
+            }
+            traces.append(trace)
         return TraceSnapshot(traces)
 
     def _select_traces(self, client: Langfuse) -> list[TraceWithDetails]:

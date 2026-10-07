@@ -62,9 +62,9 @@ def loader(handler, **config):
 
 def test_v4_pagination_full_tree_scores_and_context():
     requests = []
-    root = observation("root", start=START - timedelta(seconds=10), input='{"question":"where?"}')
+    root = observation("root", start=START, input='{"question":"where?"}')
     child = observation(
-        "child", parent="root", start=END + timedelta(seconds=1), output="null", totalCost=0.12
+        "child", parent="root", start=START + timedelta(seconds=10), output="null", totalCost=0.12
     )
 
     def handler(request):
@@ -98,7 +98,9 @@ def test_v4_pagination_full_tree_scores_and_context():
             return httpx.Response(200, json=page([]))
         if q.get("traceId"):
             assert q["traceId"] == "t"
-            assert "filter" not in q and "fromStartTime" not in q and "toStartTime" not in q
+            assert "filter" not in q
+            assert datetime.fromisoformat(q["fromStartTime"]) == START
+            assert datetime.fromisoformat(q["toStartTime"]) == END
             assert "io" in q["fields"] and "trace_context" in q["fields"]
             return httpx.Response(
                 200,
@@ -130,7 +132,7 @@ def test_v4_pagination_full_tree_scores_and_context():
     assert trace.root_spans[0].output is UNSET
     assert tool.tool_call.result_count == 1
     assert trace.aggregate.cost_usd == 0.12
-    assert trace.aggregate.latency_ms == 3612000
+    assert trace.aggregate.latency_ms == 11000
     assert trace.attributes["logical_case_id"] == "s"
     assert trace.attributes["langfuse"]["input"] == {"question": "where?"}
     assert [s["value"] for s in trace.evaluator_results["quality"]] == [False, "bad"]
@@ -315,3 +317,55 @@ def test_v4_missing_parent_and_conflicting_sessions_remain_visible():
     assert "logical_case_id" not in trace.attributes
     assert len(trace.root_spans) == 2
     assert trace.root_spans[0].attributes["langfuse"]["session_id"] in {"s", "another-session"}
+
+
+def test_v4_trace_details_include_time_bounds_to_avoid_server_timeout():
+    """Self-hosted v4 can time out on trace-ID-only observation reads."""
+
+    def handler(request):
+        if request.url.path.endswith("/v3/scores"):
+            return httpx.Response(200, json=page([]))
+        q = request.url.params
+        if q.get("traceId") and not (q.get("fromStartTime") and q.get("toStartTime")):
+            return httpx.Response(
+                422,
+                json={"message": "Please narrow your request", "error": "Request timed out"},
+            )
+        return httpx.Response(200, json=page([observation("root")]))
+
+    assert [trace.id for trace in loader(handler, api_version="v4").load()] == ["t"]
+
+
+def test_v4_window_excludes_outside_steps_and_records_partial_scope():
+    records = [
+        observation("root", start=START - timedelta(seconds=1)),
+        observation("child", parent="root", start=START),
+        observation("later", parent="root", start=END),
+    ]
+
+    def handler(request):
+        if request.url.path.endswith("/v3/scores"):
+            return httpx.Response(200, json=page([]))
+        q = request.url.params
+        lower = datetime.fromisoformat(q["fromStartTime"])
+        upper = datetime.fromisoformat(q["toStartTime"])
+        return httpx.Response(
+            200,
+            json=page(
+                [
+                    row
+                    for row in records
+                    if lower <= datetime.fromisoformat(row["startTime"]) < upper
+                ]
+            ),
+        )
+
+    instance = loader(handler, api_version="v4")
+    trace = list(instance.load())[0]
+    assert [span.id for span in trace.root_spans] == ["child"]
+    assert instance.describe()["unresolved_parent_count"] == 1
+    assert trace.attributes["observation_window"] == {
+        "from_timestamp": START.isoformat(),
+        "to_timestamp": END.isoformat(),
+        "may_exclude_trace_steps": True,
+    }
