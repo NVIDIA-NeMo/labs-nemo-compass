@@ -314,7 +314,7 @@ async def _rate_confidence_with_code(
             if trace is not None
         )
         rating = await rater.rate(insight, supporting_traces)
-        return insight.model_copy(update={"confidence": rating.confidence})
+        return insight.model_copy(update={"confidence": rating})
 
     return list(await asyncio.gather(*(rate_insight(insight) for insight in insights)))
 

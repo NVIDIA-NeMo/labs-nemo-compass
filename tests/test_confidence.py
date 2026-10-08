@@ -13,15 +13,21 @@ from insight_agent.insights_generation.confidence import InsightConfidence
 from insight_agent.traces import Trace, TraceAggregate
 
 
-def _response(content: str, tool_calls: list[ToolCall]) -> LLMResponse:
+def _response(name: str, arguments: dict, call_id: str) -> LLMResponse:
     return LLMResponse(
         raw_response=None,
-        content=content,
-        tool_calls=tool_calls,
-        finish_reason="tool_calls" if tool_calls else "stop",
-        assistant_message={"role": "assistant", "content": content},
-        reasoning=None,
-        usage=None,
+        content="",
+        tool_calls=[ToolCall(id=call_id, name=name, arguments=json.dumps(arguments))],
+        finish_reason="tool_calls",
+        assistant_message={},
+    )
+
+
+def _read_agent_code() -> LLMResponse:
+    return _response(
+        "execute_python",
+        {"code": "print(self.codebase.read_file('agent.py'))"},
+        "read",
     )
 
 
@@ -33,37 +39,33 @@ def _insight() -> Insight:
     )
 
 
-def test_insight_confidence_uses_code_before_deciding(tmp_path) -> None:
-    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
-    tool_call = ToolCall(id="read-1", name="read_file", arguments=json.dumps({"path": "agent.py"}))
-    llm = FakeLLMClient(
-        scripted_responses=[
-            _response("", [tool_call]),
-            _response('{"confidence": "high"}', []),
-        ]
-    )
-    rater = InsightConfidence(tmp_path, llm)
+def _rate(tmp_path, llm: FakeLLMClient) -> str | None:
     trace = Trace(id="t1", root_spans=[], aggregate=TraceAggregate())
+    return asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), (trace,)))
 
-    result = asyncio.run(rater.rate(_insight(), (trace,)))
 
-    assert result.confidence == "high"
+def test_insight_confidence_reads_code_before_rating(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
+    llm = FakeLLMClient(
+        [_read_agent_code(), _response("return_result", {"result": {"confidence": "high"}}, "done")]
+    )
+
+    assert _rate(tmp_path, llm) == "high"
     assert llm.call_count == 2
+    assert "TIMEOUT_SECONDS = 1" in str(llm.last_messages)
 
 
 def test_insight_confidence_can_be_low_after_code_inspection(tmp_path) -> None:
-    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
-    tool_call = ToolCall(id="read-1", name="read_file", arguments=json.dumps({"path": "agent.py"}))
+    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 60\n", encoding="utf-8")
     llm = FakeLLMClient(
-        scripted_responses=[
-            _response("", [tool_call]),
-            _response('{"confidence": "low"}', []),
-        ]
+        [_read_agent_code(), _response("return_result", {"result": {"confidence": "low"}}, "done")]
     )
-    rater = InsightConfidence(tmp_path, llm)
-    trace = Trace(id="t1", root_spans=[], aggregate=TraceAggregate())
 
-    result = asyncio.run(rater.rate(_insight(), (trace,)))
+    assert _rate(tmp_path, llm) == "low"
 
-    assert result.confidence == "low"
-    assert llm.call_count == 2
+
+def test_insight_confidence_is_unset_when_step_budget_is_exhausted(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
+    llm = FakeLLMClient([_read_agent_code() for _ in range(40)])
+
+    assert _rate(tmp_path, llm) is None

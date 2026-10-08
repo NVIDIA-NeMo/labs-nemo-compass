@@ -279,7 +279,7 @@ def test_confidence_rating_preserves_compiled_severity(tmp_path, monkeypatch) ->
 
         async def rate(self, insight, supporting_traces):
             received.append((insight, supporting_traces))
-            return SimpleNamespace(confidence="high")
+            return "high"
 
     monkeypatch.setattr(cli, "InsightConfidence", FakeRater)
 

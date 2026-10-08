@@ -30,9 +30,10 @@ occurrence count.
 When `code_base` is configured, a [second code-aware
 review](../src/insight_agent/insights_generation/confidence.py) runs after compilation. It evaluates
 each final insight’s behavior, root cause, scope, and implied remediation, assigning confidence
-without changing severity. Validation and confidence use the same read-only investigation engine,
-but retain separate decision contracts because they operate on different artifacts at different
-pipeline stages.
+without changing severity. Validation and confidence are separate NOOA agents with read-only access
+to the codebase and separate decision contracts, because they operate on different artifacts at
+different pipeline stages. If an agent cannot decide within its step budget, validation retains the
+problem and confidence is left unset.
 
 ![Architecture overview: a Trace loaders group contains LangSmith, Langfuse, Braintrust, MLflow, and Other, all feeding a normalized snapshot. An Evidence streams group contains the five detectors, which feed candidate problems through optional code validation and insight compilation to ranked insights.](assets/architecture/overview.png)
 
