@@ -37,6 +37,7 @@ from insight_agent.config import EvidenceStreamsConfig, RunConfig, TraceConfig
 from insight_agent.evidence_streams.builtins import registered_builtin_streams
 from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
+from insight_agent.insights_generation.confidence import InsightConfidence
 from insight_agent.insights_generation.config import (
     ENV_API_BASE,
     ENV_API_KEY,
@@ -77,7 +78,7 @@ from insight_agent.trace_loaders.mlflow import (
     MLflowTraceLoader,
 )
 from insight_agent.trace_loaders.trace_loaders import TraceLoader
-from insight_agent.traces import TraceSnapshot
+from insight_agent.traces import Trace, TraceSnapshot
 
 EXIT_OK = 0
 EXIT_SETUP = 2
@@ -287,6 +288,37 @@ async def _validate_evidence_with_code(
     return list(await asyncio.gather(*(validate_result(result) for result in evidence)))
 
 
+async def _rate_confidence_with_code(
+    insights: list[Insight],
+    snapshot: TraceSnapshot,
+    code_base_path: Path,
+    llm: UnifiedLLM,
+) -> list[Insight]:
+    """Rate each insight's confidence against the supplied codebase."""
+
+    code_base_path = code_base_path.expanduser().resolve()
+    if not code_base_path.is_dir():
+        raise ValueError(f"code_base must be an existing directory: {code_base_path}")
+    rater = InsightConfidence(code_base_path, llm)
+
+    def supporting_trace(ref: str) -> Trace | None:
+        try:
+            return snapshot.get_trace_by_id(ref)
+        except KeyError:
+            return None
+
+    async def rate_insight(insight: Insight) -> Insight:
+        supporting_traces = tuple(
+            trace
+            for trace in (supporting_trace(item.trace_id) for item in insight.evidence)
+            if trace is not None
+        )
+        rating = await rater.rate(insight, supporting_traces)
+        return insight.model_copy(update={"confidence": rating})
+
+    return list(await asyncio.gather(*(rate_insight(insight) for insight in insights)))
+
+
 def _build_llm(config: RunConfig, api_key: str) -> CompletionClient:
     """Construct an LLM client with the run's shared model settings."""
 
@@ -343,6 +375,12 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
                 config, api_key, snapshot, result, output, run_timestamp
             )
         result.insights = resolve_trace_links(result.insights, snapshot, existing)
+        if config.code_base is not None and result.insights:
+            output.activity = "Investigating insight confidence against the codebase"
+            async with _build_llm(config, api_key) as llm:
+                result.insights = await _rate_confidence_with_code(
+                    result.insights, snapshot, config.code_base, llm
+                )
         return result
 
 

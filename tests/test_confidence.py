@@ -8,8 +8,8 @@ import json
 
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-from insight_agent.evidence_streams.evidence_streams import Problem
-from insight_agent.insights_generation.validation import ProblemValidation
+from insight_agent.insight import Insight
+from insight_agent.insights_generation.confidence import InsightConfidence
 from insight_agent.traces import Trace, TraceAggregate
 
 
@@ -31,40 +31,41 @@ def _read_agent_code() -> LLMResponse:
     )
 
 
-def _validate(tmp_path, llm: FakeLLMClient) -> bool | None:
-    problem = Problem(description="Requests time out too quickly", supporting_trace_ids=("t1",))
-    trace = Trace(id="t1", root_spans=[], aggregate=TraceAggregate())
-    return asyncio.run(ProblemValidation(tmp_path, llm).is_supported(problem, (trace,)))
-
-
-def test_problem_validation_reads_code_before_accepting_problem(tmp_path) -> None:
-    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
-    llm = FakeLLMClient(
-        [_read_agent_code(), _response("return_result", {"result": {"supported": True}}, "done")]
+def _insight() -> Insight:
+    return Insight(
+        name="Requests time out too quickly",
+        description="The agent's HTTP client times out before slow tools can respond.",
+        evidence=[{"trace_id": "t1"}, {"trace_id": "t2"}],
     )
 
-    assert _validate(tmp_path, llm) is True
+
+def _rate(tmp_path, llm: FakeLLMClient) -> str | None:
+    trace = Trace(id="t1", root_spans=[], aggregate=TraceAggregate())
+    return asyncio.run(InsightConfidence(tmp_path, llm).rate(_insight(), (trace,)))
+
+
+def test_insight_confidence_reads_code_before_rating(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
+    llm = FakeLLMClient(
+        [_read_agent_code(), _response("return_result", {"result": {"confidence": "high"}}, "done")]
+    )
+
+    assert _rate(tmp_path, llm) == "high"
     assert llm.call_count == 2
     assert "TIMEOUT_SECONDS = 1" in str(llm.last_messages)
 
 
-def test_problem_validation_rejects_code_contradicted_problem(tmp_path) -> None:
+def test_insight_confidence_can_be_low_after_code_inspection(tmp_path) -> None:
     (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 60\n", encoding="utf-8")
     llm = FakeLLMClient(
-        [_read_agent_code(), _response("return_result", {"result": {"supported": False}}, "done")]
+        [_read_agent_code(), _response("return_result", {"result": {"confidence": "low"}}, "done")]
     )
 
-    assert _validate(tmp_path, llm) is False
+    assert _rate(tmp_path, llm) == "low"
 
 
-def test_problem_validation_can_return_not_applicable(tmp_path) -> None:
-    llm = FakeLLMClient([_response("return_result", {"result": {"supported": None}}, "done")])
-
-    assert _validate(tmp_path, llm) is None
-
-
-def test_problem_validation_retains_problem_when_step_budget_is_exhausted(tmp_path) -> None:
+def test_insight_confidence_is_unset_when_step_budget_is_exhausted(tmp_path) -> None:
     (tmp_path / "agent.py").write_text("TIMEOUT_SECONDS = 1\n", encoding="utf-8")
     llm = FakeLLMClient([_read_agent_code() for _ in range(40)])
 
-    assert _validate(tmp_path, llm) is None
+    assert _rate(tmp_path, llm) is None

@@ -18,11 +18,22 @@ analysis. Partners can run the NeMo Compass pipeline, reuse individual evidence 
 candidates in their original traces, assesses their impact and whether a developer can fix them,
 merges duplicates across streams and existing insights, and ranks the results. Its instructions
 require each new insight to have support from more than one trace and to merge symptoms only when
-they establish the same problem. These decisions rely on model judgment. Before compilation, an
-optional [code-aware validator](../src/insight_agent/insights_generation/validation.py) checks
-candidates against the agent’s source using read-only search and file access. It removes claims
-contradicted by the code and retains unresolved ones. Each resulting insight includes supporting
-trace references for developer review.
+they establish the same problem. These decisions rely on model judgment.
+
+When `code_base` is configured, a [code-aware
+validator](../src/insight_agent/insights_generation/validation.py) runs before compilation and
+removes candidate problems contradicted by the agent’s source while retaining problems the source
+cannot resolve. Compilation then merges the retained evidence into insights, attaches supporting
+trace references, and assigns severity from observed consequences and recovery independently of
+occurrence count.
+
+When `code_base` is configured, a [second code-aware
+review](../src/insight_agent/insights_generation/confidence.py) runs after compilation. It evaluates
+each final insight’s behavior, root cause, scope, and implied remediation, assigning confidence
+without changing severity. Validation and confidence are separate NOOA agents with read-only access
+to the codebase and separate decision contracts, because they operate on different artifacts at
+different pipeline stages. If an agent cannot decide within its step budget, validation retains the
+problem and confidence is left unset.
 
 ![Architecture overview: a Trace loaders group contains LangSmith, Langfuse, Braintrust, MLflow, and Other, all feeding a normalized snapshot. An Evidence streams group contains the five detectors, which feed candidate problems through optional code validation and insight compilation to ranked insights.](assets/architecture/overview.png)
 
