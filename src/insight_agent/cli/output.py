@@ -33,6 +33,7 @@ _SKIP_LABELS = {
     "No embedding backend configured": "no embedding backend",
 }
 _LOG_INTERVAL = 10
+_SEVERITY_STYLES = {"high": "bold red", "medium": "bold yellow", "low": "bold cyan"}
 
 
 def display_name(name: str) -> str:
@@ -124,6 +125,12 @@ class RunOutput:
             self.console.print(
                 Text(f"   Evidence: {count(trace_count, 'supporting trace')}", style="dim")
             )
+            if insight.severity is not None:
+                severity = Text("   Severity: ", style="dim")
+                severity.append(insight.severity.upper(), style=_SEVERITY_STYLES[insight.severity])
+                if insight.severity_reason is not None:
+                    severity.append(f" — {insight.severity_reason}", style="dim")
+                self.console.print(severity)
         self._report_checks(result.evidence)
 
         if result.insights and output_path != Path("-"):

@@ -102,3 +102,16 @@ def test_report_lists_all_insights_in_order_and_omits_irrelevant_guidance():
     assert "Skipped" not in rendered and "To run skipped analyses" not in rendered
     assert "Saved:" not in rendered
     assert result.insights == insights
+
+
+def test_report_shows_optional_severity_and_reason():
+    insight = make_insight().model_copy(
+        update={
+            "severity": "high",
+            "severity_reason": "The agent is blocked from completing the task.",
+        }
+    )
+    stream = StringIO()
+    RunOutput(Console(file=stream, width=120)).report(RunResult(3, [], [insight]), Path("-"))
+
+    assert "Severity: HIGH — The agent is blocked from completing the task." in stream.getvalue()

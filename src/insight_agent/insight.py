@@ -8,12 +8,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, TypeAdapter
 from trace_ingest.source_links import SourceURL
 
 from insight_agent.traces import TraceSnapshot
+
+Severity = Literal["low", "medium", "high"]
 
 
 class SpanEvidence(BaseModel):
@@ -38,6 +41,20 @@ class Insight(BaseModel):
     )
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    severity: Severity | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "How urgently this needs attention: low, medium, or high. "
+            "Absent only on insights saved before this field existed."
+        ),
+    )
+    severity_reason: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description="Plain-language reason for the severity bucket, one short sentence.",
+    )
     evidence: list[TraceEvidence] = Field(
         min_length=2,
         description="Supporting traces with optional relevant spans. URLs are populated by the application.",

@@ -13,6 +13,8 @@ def test_existing_identity_survives_artifact_round_trip(tmp_path):
             "id": "platform-123",
             "name": "Timeouts",
             "description": "Repeated timeouts",
+            "severity": "medium",
+            "severity_reason": "Agent retries burn tokens but the user still gets a response.",
             "evidence": [{"trace_id": "a"}, {"trace_id": "b"}],
         }
     )
@@ -26,6 +28,8 @@ def test_new_insight_does_not_require_or_serialize_an_id():
         {
             "name": "Timeouts",
             "description": "Repeated timeouts",
+            "severity": "medium",
+            "severity_reason": "Agent retries burn tokens but the user still gets a response.",
             "evidence": [{"trace_id": "a"}, {"trace_id": "b"}],
         }
     )
@@ -40,6 +44,33 @@ def test_empty_id_is_rejected():
                 "id": "",
                 "name": "Timeouts",
                 "description": "Repeated timeouts",
+                "evidence": [{"trace_id": "a"}, {"trace_id": "b"}],
+            }
+        )
+
+
+def test_insight_without_severity_loads_for_backward_compatibility(tmp_path):
+    """Insights saved before the severity field existed must still load for reconciliation."""
+    path = tmp_path / "insights.json"
+    path.write_text(
+        '[{"name": "Timeouts", "description": "Repeated timeouts", '
+        '"evidence": [{"trace_id": "a"}, {"trace_id": "b"}]}]'
+    )
+    loaded = load_insights(path)[0]
+    assert loaded.severity is None
+    assert loaded.severity_reason is None
+    assert "severity" not in loaded.model_dump()
+    assert "severity_reason" not in loaded.model_dump()
+
+
+def test_invalid_severity_is_rejected():
+    with pytest.raises(ValidationError):
+        Insight.model_validate(
+            {
+                "name": "Timeouts",
+                "description": "Repeated timeouts",
+                "severity": "critical",
+                "severity_reason": "Agent retries burn tokens but the user still gets a response.",
                 "evidence": [{"trace_id": "a"}, {"trace_id": "b"}],
             }
         )
