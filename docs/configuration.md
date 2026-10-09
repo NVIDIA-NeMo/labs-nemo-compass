@@ -17,8 +17,8 @@ in the environment or `.env`.
 | `trace.max_traces` | Limit complete traces from a provider or native export. Unsupported for canonical JSONL, ATIF, and Gym rollouts. |
 | `output_path` | YAML output file; defaults to `insights.yml`. Use `-` for stdout. |
 | `model`, `api_base`, `max_tokens` | [Inference settings](model-access.md#choose-a-model). |
-| `evidence_streams` | [Evidence streams and their prerequisites](evidence-streams.md). All five are enabled by default. |
-| `code_base` | [Local agent source](evidence-streams.md#check-findings-against-code) to consult during validation. |
+| `compass_signals` | [Compass Signals and their prerequisites](compass-signals.md). All five are enabled by default. |
+| `code_base` | [Local agent source](compass-signals.md#check-findings-against-code) to consult during validation. |
 | `existing_insights` | Previous JSON or YAML insight collection to reconcile with this run. |
 
 Relative paths resolve from the directory where you run the command.
@@ -55,5 +55,5 @@ existing_insights: previous-insights.yml
 output_path: updated-insights.yml
 ```
 
-Trace Analyst reconciles old and new findings into a complete collection.
+NeMo Compass reconciles old and new findings into a complete collection.
 See [output behavior](results.md#saved-output) before using the files in a pipeline.

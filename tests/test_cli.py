@@ -7,12 +7,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import yaml
 from nooa.unifiedllm import FakeLLMClient
 
 import insight_agent.cli.main as cli
-from insight_agent.config import EvidenceStreamsConfig, RunConfig
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from insight_agent.evidence_streams.registry import EvidenceStreamRegistry
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
+from insight_agent.compass_signals.registry import CompassSignalRegistry
+from insight_agent.config import CompassSignalsConfig, RunConfig
 from insight_agent.insight import Insight, load_insights
 from insight_agent.insights_generation.config import load_dotenv
 from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
@@ -30,7 +31,7 @@ def test_missing_environment_exits_before_loading_traces(
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "trace:\n  langsmith:\n    project: production\n"
-        "evidence_streams:\n  user_sentiment:\n    litellm:\n"
+        "compass_signals:\n  user_sentiment:\n    litellm:\n"
         "      model: openai/embedding\n      api_key_env: EMBEDDING_API_KEY\n"
     )
     monkeypatch.setenv("LANGSMITH_API_KEY", "")
@@ -48,10 +49,10 @@ def test_missing_environment_exits_before_loading_traces(
         "Missing required environment settings:\n"
         "  INSIGHT_AGENT_API_KEY — API key for the configured model\n"
         "  LANGSMITH_API_KEY — API key for LangSmith\n"
-        "  EMBEDDING_API_KEY — API key named by evidence_streams.user_sentiment.litellm.api_key_env\n\n"
+        "  EMBEDDING_API_KEY — API key named by compass_signals.user_sentiment.litellm.api_key_env\n\n"
         "Set these in .env in your working directory (NAME=value),\n"
         "or export them in your shell, then rerun the command.\n"
-        "Setup: https://github.com/NVIDIA-NeMo/labs-trace-intel/blob/main/docs/model-access.md\n"
+        "Setup: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/model-access.md\n"
     )
     assert not output.exists()
 
@@ -64,7 +65,7 @@ def test_langfuse_checks_only_missing_settings_after_cli_overrides(
         "trace:\n  langfuse:\n"
         "    from_timestamp: 2026-01-01T00:00:00Z\n"
         "    to_timestamp: 2026-01-02T00:00:00Z\n"
-        "evidence_streams:\n  tool_issues: {}\n"
+        "compass_signals:\n  tool_issues: {}\n"
     )
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "private-model-key")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "private-project-key")
@@ -91,7 +92,7 @@ def test_environment_accepts_dotenv_and_existing_key_aliases(
     )
     monkeypatch.setenv("ANTHROPIC_API_KEY", "exported-model-key")
     config = RunConfig(
-        trace={"langsmith": {"project": "production"}}, evidence_streams={"tool_issues": {}}
+        trace={"langsmith": {"project": "production"}}, compass_signals={"tool_issues": {}}
     )
 
     assert cli._check_environment(config) == "exported-model-key"
@@ -152,14 +153,27 @@ def test_anthropic_parameters_are_translated_to_native_fields(clean_environment,
     assert native["tool_choice"] == {"type": "auto"}
 
 
+@pytest.mark.parametrize("save_file", [True, False])
 def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
-    clean_environment, tmp_path, monkeypatch, capsys, select_streams
+    clean_environment, tmp_path, monkeypatch, capsys, select_signals, save_file
 ):
     existing = [
-        Insight(
-            name="Search omits archived documents",
-            description="Archived documents disappear from search results.",
-            trace_refs=["historical-trace-1", "historical-trace-2"],
+        Insight.model_validate(
+            {
+                "name": "Search omits archived documents",
+                "description": "Archived documents disappear from search results.",
+                "evidence": [
+                    {
+                        "trace_id": f"historical-trace-{i}",
+                        "url": f"https://provider.test/trace/{i}",
+                        "spans": [
+                            {"span_id": f"span-{j}", "url": f"https://provider.test/span/{i}/{j}"}
+                            for j in range(3)
+                        ],
+                    }
+                    for i in range(116)
+                ],
+            }
         )
     ]
     existing_path = tmp_path / "existing.json"
@@ -176,38 +190,49 @@ def test_cli_preserves_existing_insights_without_synthesizing_empty_evidence(
         [
             "--trace.filesystem.path",
             str(trace_path),
-            "--evidence-streams",
-            json.dumps(select_streams(tool_issues={"retry_threshold": 3})),
+            "--compass-signals",
+            json.dumps(select_signals(tool_issues={"retry_threshold": 3})),
             "--existing-insights",
             str(existing_path),
             "--output-path",
-            str(output_path),
+            str(output_path) if save_file else "-",
         ]
     )
 
     compilation.compile_insights.assert_not_awaited()
     assert result == cli.EXIT_OK
     captured = capsys.readouterr()
-    assert output_path.read_text(encoding="utf-8") == captured.out
-    assert "No new insights produced from 1 trace." in captured.err
+    assert yaml.safe_load(captured.out) == [item.model_dump() for item in existing]
+    assert "116 supporting traces" in captured.err
+    assert "Trace " not in captured.err and "Span " not in captured.err
+    assert "Ran:      None" in captured.err
+    assert "Skipped:  Tool issues — No tool calls" in captured.err
+    assert "No new insights from 1 trace" in captured.err
     assert "1 existing insight retained." in captured.err
-    assert "Skipped" in captured.err
-    assert "Tool issues" in captured.err and "No tool calls" in captured.err
-    assert f"Saved: {output_path}" in captured.err
-    assert load_insights(output_path) == existing
+    if save_file:
+        assert f"Saved: {output_path}" in captured.err
+        assert output_path.read_text(encoding="utf-8") == captured.out
+        assert load_insights(output_path) == existing
+    else:
+        assert "Saved:" not in captured.err
+        assert not output_path.exists()
 
 
-def test_code_validation_filters_problems_and_preserves_stream_result(
+def test_code_validation_filters_problems_and_preserves_signal_result(
     tmp_path, monkeypatch
 ) -> None:
     trace = Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())
     snapshot = TraceSnapshot([trace])
-    supported = Problem(description="Supported", supporting_trace_ids=("trace-1",))
+    supported = Problem(
+        description="Supported",
+        supporting_trace_ids=("trace-1",),
+        candidate_trace_ids=("trace-1", "not-fetched-by-code-validator"),
+    )
     unsupported = Problem(description="Unsupported", supporting_trace_ids=("trace-1",))
     unknown = Problem(description="Unknown", supporting_trace_ids=("trace-1",))
     evidence = [
-        EvidenceStreamResult(
-            stream_name="test-stream",
+        CompassSignalResult(
+            signal_name="test-signal",
             problems=(supported, unsupported, unknown),
             artifacts={"kept": True},
         )
@@ -237,13 +262,13 @@ def test_code_validation_filters_problems_and_preserves_stream_result(
     ]
 
 
-def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):
+def test_compass_signals_share_cli_loop_and_run_concurrently(monkeypatch):
     async def run():
         loop = asyncio.get_running_loop()
         started = asyncio.Event()
-        registry = EvidenceStreamRegistry()
+        registry = CompassSignalRegistry()
 
-        class Stream:
+        class Signal:
             def __init__(self, name):
                 self.name = name
 
@@ -256,18 +281,18 @@ def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):
                     await asyncio.wait_for(started.wait(), timeout=1)
                 else:
                     started.set()
-                return EvidenceStreamResult(stream_name=self.name, problems=())
+                return CompassSignalResult(signal_name=self.name, problems=())
 
-        for stream in (Stream("first"), Stream("second")):
-            registry.register(stream)
-        monkeypatch.setattr(cli, "registered_builtin_streams", lambda **kwargs: registry)
+        for signal in (Signal("first"), Signal("second")):
+            registry.register(signal)
+        monkeypatch.setattr(cli, "registered_builtin_signals", lambda **kwargs: registry)
         progress = []
-        results = await cli._run_evidence_streams(
-            EvidenceStreamsConfig(tool_issues={}),
+        results = await cli._run_compass_signals(
+            CompassSignalsConfig(tool_issues={}),
             TraceSnapshot([Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())]),
             progress=progress.append,
         )
-        assert [result.stream_name for result in results] == ["first", "second"]
+        assert [result.signal_name for result in results] == ["first", "second"]
         assert set().union(*map(set, progress)) == {"first", "second"}
         assert progress[-1] == ()
 
@@ -275,7 +300,7 @@ def test_evidence_streams_share_cli_loop_and_run_concurrently(monkeypatch):
 
 
 def test_no_candidates_skips_synthesis_and_file_creation(
-    clean_environment, tmp_path, monkeypatch, capsys, select_streams
+    clean_environment, tmp_path, monkeypatch, capsys, select_signals
 ):
     traces = tmp_path / "traces.jsonl"
     traces.write_text('{"id":"trace-1","root_spans":[],"aggregate":{}}')
@@ -289,8 +314,8 @@ def test_no_candidates_skips_synthesis_and_file_creation(
             [
                 "--trace.filesystem.path",
                 str(traces),
-                "--evidence-streams",
-                json.dumps(select_streams(tool_issues=True)),
+                "--compass-signals",
+                json.dumps(select_signals(tool_issues=True)),
                 "--output-path",
                 str(output),
             ]

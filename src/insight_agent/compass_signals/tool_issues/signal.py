@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tool-issue evidence stream.
+"""Tool-issue Compass Signal.
 
 The implementation follows the current seven-category, nineteen-finding
 catalog. It is deterministic, capability-gated, and independent of source
@@ -23,8 +23,8 @@ from typing import Any, Literal
 from jsonschema import validators
 from pydantic import BaseModel, Field
 
-from insight_agent.evidence_streams._trace import walk_spans
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.compass_signals._trace import walk_spans
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.traces import UNSET, SpanKind, Trace, TraceSnapshot
 
 DETECTOR_VERSION = "tid-v1"
@@ -580,6 +580,7 @@ class ToolIssueCard(BaseModel):
     finding_count: int = Field(ge=1)
     independent_case_count: int = Field(ge=1)
     eligible_for_analyst: bool
+    trace_ids: tuple[str, ...] = Field(min_length=1)
     representative_evidence: tuple[RepresentativeEvidence, ...] = Field(min_length=1)
     impact_status: Literal["not_established"]
     impact_boundary: str
@@ -622,6 +623,7 @@ def build_cards(
                 finding_count=len(members),
                 independent_case_count=len(logical_cases),
                 eligible_for_analyst=eligible,
+                trace_ids=tuple(dict.fromkeys(str(member["trace_id"]) for member in members)),
                 representative_evidence=tuple(examples),
                 impact_status="not_established",
                 impact_boundary="No impact is claimed beyond the directly observed tool-use issue.",
@@ -681,6 +683,7 @@ def problems_from_cards(
                     f"{card.impact_boundary}"
                 ),
                 supporting_trace_ids=trace_ids,
+                candidate_trace_ids=card.trace_ids,
             )
         )
     return tuple(problems)
@@ -775,7 +778,7 @@ def to_tool_issue_trace(trace: Trace) -> TraceRecord:
 
 
 @dataclass(frozen=True)
-class ToolIssueEvidenceStream:
+class ToolIssueCompassSignal:
     name = "tool-issues"
 
     config: ToolIssueConfig = field(default_factory=ToolIssueConfig)
@@ -789,11 +792,11 @@ class ToolIssueEvidenceStream:
             return "No tool calls"
         return None
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         traces = await asyncio.to_thread(lambda: [to_tool_issue_trace(trace) for trace in snapshot])
         return await asyncio.to_thread(self._analyze, traces)
 
-    def _analyze(self, traces: Sequence[TraceRecord]) -> EvidenceStreamResult:
+    def _analyze(self, traces: Sequence[TraceRecord]) -> CompassSignalResult:
         findings = detect(
             traces,
             retry_threshold=self.config.retry_threshold,
@@ -817,8 +820,8 @@ class ToolIssueEvidenceStream:
                 limited.append(
                     f"tool schemas missing in {scope} {len(traces)} trace{'s' if len(traces) != 1 else ''}"
                 )
-        return EvidenceStreamResult(
-            stream_name=self.name,
+        return CompassSignalResult(
+            signal_name=self.name,
             problems=problems,
             finding_count=len(findings),
             limitations=tuple(limited),

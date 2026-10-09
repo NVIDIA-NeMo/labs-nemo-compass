@@ -38,7 +38,7 @@ class UserEmbeddingProjection:
     """Project and compress normalized user embeddings into reusable 132-byte vectors."""
 
     def __init__(self) -> None:
-        folder = files("insight_agent.evidence_streams.user_embedding").joinpath("models")
+        folder = files("insight_agent.compass_signals.user_embedding").joinpath("models")
         self.metadata = json.loads(folder.joinpath("embedding.json").read_text())
         with folder.joinpath("embedding.npz").open("rb") as handle:
             with np.load(handle, allow_pickle=False) as arrays:

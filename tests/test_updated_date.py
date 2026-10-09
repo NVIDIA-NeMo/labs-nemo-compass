@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from insight_agent.insight import Insight, load_insights
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
+from insight_agent.insight import Insight, TraceEvidence, load_insights
 
 
 def trace(id):
@@ -24,7 +24,7 @@ def test_updated_date_round_trips_through_yaml(tmp_path):
     insight = Insight(
         name="Timeouts",
         description="Repeated timeouts",
-        trace_refs=["a", "b"],
+        evidence=[TraceEvidence(trace_id="a"), TraceEvidence(trace_id="b")],
         updated_date=stamped_at,
     )
     path = tmp_path / "insights.yml"
@@ -36,11 +36,15 @@ def test_updated_date_round_trips_through_yaml(tmp_path):
 
 
 def test_insight_without_updated_date_does_not_serialize_the_field():
-    insight = Insight(name="Timeouts", description="Repeated timeouts", trace_refs=["a", "b"])
+    insight = Insight(
+        name="Timeouts",
+        description="Repeated timeouts",
+        evidence=[TraceEvidence(trace_id="a"), TraceEvidence(trace_id="b")],
+    )
     assert "updated_date" not in insight.model_dump()
 
 
-def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch, select_streams):
+def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch, select_signals):
     """End-to-end through cli.main(): updated_date is now set by the LLM inside
     compile_insights (given run_timestamp), not by any Python post-processing.
     This proves the CLI layer writes out exactly what compilation returned,
@@ -59,11 +63,11 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
     monkeypatch.setattr(
         cli,
-        "_run_evidence_streams",
+        "_run_compass_signals",
         AsyncMock(
             return_value=[
-                EvidenceStreamResult(
-                    stream_name="tool-issues",
+                CompassSignalResult(
+                    signal_name="tool-issues",
                     problems=(Problem(description="Failure", supporting_trace_ids=("a", "b")),),
                 )
             ]
@@ -76,8 +80,8 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
             str(path),
             "--output-path",
             str(output),
-            "--evidence-streams",
-            json.dumps(select_streams(tool_issues={})),
+            "--compass-signals",
+            json.dumps(select_signals(tool_issues={})),
         ]
 
     # First run: the mock simulates the LLM creating a new insight and
@@ -87,7 +91,7 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
         id="platform-1",
         name="Repeated failure",
         description="Details",
-        trace_refs=["a", "b"],
+        evidence=[TraceEvidence(trace_id="a"), TraceEvidence(trace_id="b")],
         updated_date=first_stamp,
     )
     first_compile = AsyncMock(return_value=[first_insight])
@@ -107,7 +111,10 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
     # with a later run_timestamp - the CLI must not recompute or override it.
     second_stamp = datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc)
     grown_insight = first_insight.model_copy(
-        update={"trace_refs": ["a", "b", "c"], "updated_date": second_stamp}
+        update={
+            "evidence": [TraceEvidence(trace_id=ref) for ref in ["a", "b", "c"]],
+            "updated_date": second_stamp,
+        }
     )
     second_compile = AsyncMock(return_value=[grown_insight])
     monkeypatch.setattr(
@@ -119,7 +126,7 @@ def test_cli_passes_through_updated_date_from_compilation(tmp_path, monkeypatch,
         == cli.EXIT_OK
     )
     [after_second] = load_insights(second_output)
-    assert after_second.trace_refs == ["a", "b", "c"]
+    assert [item.trace_id for item in after_second.evidence] == ["a", "b", "c"]
     assert after_second.updated_date == second_stamp  # untouched - exactly what the mock returned
 
     # Third run: the mock simulates the LLM deciding nothing changed, so it

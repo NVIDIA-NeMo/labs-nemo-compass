@@ -12,7 +12,7 @@ from pydantic import ValidationError
 import insight_agent.config as app_config
 from insight_agent.cli.main import _configured_trace_loader
 from insight_agent.config import (
-    EvidenceStreamsConfig,
+    CompassSignalsConfig,
     RunConfig,
     TraceConfig,
 )
@@ -36,7 +36,7 @@ def test_run_config_selects_langsmith_trace_loader(tmp_path):
     filter: 'eq(status, "success")'
     tree_filter: 'eq(run_type, "tool")'
     start_time: 2026-09-01T00:00:00Z
-evidence_streams:
+compass_signals:
   anomaly_and_patterns: {}
 """,
         encoding="utf-8",
@@ -63,7 +63,7 @@ def test_run_config_loads_a_langsmith_trace_export_file(tmp_path):
   max_traces: 25
   langsmith_trace_export_file:
     path: exports/langsmith-traces
-evidence_streams:
+compass_signals:
   anomaly_and_patterns: {}
 """,
         encoding="utf-8",
@@ -83,7 +83,7 @@ def test_langsmith_trace_loader_uses_provider_default_trace_bound():
     config = RunConfig.model_validate(
         {
             "trace": {"langsmith": {"project": "glamr-ux"}},
-            "evidence_streams": {"anomaly_and_patterns": {}},
+            "compass_signals": {"anomaly_and_patterns": {}},
         }
     )
 
@@ -98,7 +98,7 @@ def test_cli_selects_langsmith_trace_export_file_loader():
         _cli_parse_args=[
             "--trace.langsmith-trace-export-file.path",
             "exports/langsmith-traces",
-            "--evidence-streams.anomaly-and-patterns.contamination",
+            "--compass-signals.anomaly-and-patterns.contamination",
             "0.02",
         ]
     )
@@ -126,5 +126,5 @@ def test_trace_config_rejects_multiple_sources():
                     path="traces"
                 ),
             ),
-            evidence_streams=EvidenceStreamsConfig(anomaly_and_patterns={}),
+            compass_signals=CompassSignalsConfig(anomaly_and_patterns={}),
         )

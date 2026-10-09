@@ -12,8 +12,8 @@ from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
 
 import insight_agent.cli.main as cli
+from insight_agent.compass_signals.tool_issues.signal import to_tool_issue_trace
 from insight_agent.config import RunConfig, TraceConfig
-from insight_agent.evidence_streams.tool_issues.stream import to_tool_issue_trace
 from insight_agent.trace_loaders import ATIFTraceConfig, ATIFTraceLoader, ATIFTraceLoadError
 from insight_agent.traces import UNSET, Span, SpanKind, TokenCounts, Trace, TraceAggregate
 
@@ -298,7 +298,7 @@ def test_failed_load_can_be_retried_and_success_is_cached(tmp_path):
 def test_yaml_cli_and_exclusive_source_selection(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(
-        f"trace:\n  atif:\n    path: {FIXTURE}\nevidence_streams:\n  tool_issues: {{}}\n"
+        f"trace:\n  atif:\n    path: {FIXTURE}\ncompass_signals:\n  tool_issues: {{}}\n"
     )
     config = RunConfig(_cli_parse_args=["--config", str(path)])
     loader = cli._configured_trace_loader(config.trace)
@@ -310,7 +310,7 @@ def test_yaml_cli_and_exclusive_source_selection(tmp_path):
         TraceConfig(atif={"path": FIXTURE}, filesystem={"path": FIXTURE})
 
 
-def test_complete_cli_runs_real_evidence_stream(tmp_path, monkeypatch, capsys, select_streams):
+def test_complete_cli_runs_real_compass_signal(tmp_path, monkeypatch, capsys, select_signals):
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "not-real")
     monkeypatch.setattr(cli, "_build_llm", lambda config, api_key: FakeLLMClient())
@@ -321,8 +321,8 @@ def test_complete_cli_runs_real_evidence_stream(tmp_path, monkeypatch, capsys, s
             [
                 "--trace.atif.path",
                 str(FIXTURE),
-                "--evidence-streams",
-                json.dumps(select_streams(tool_issues={"include_audit_problems": True})),
+                "--compass-signals",
+                json.dumps(select_signals(tool_issues={"include_audit_problems": True})),
                 "--output-path",
                 str(output),
             ]
@@ -333,7 +333,7 @@ def test_complete_cli_runs_real_evidence_stream(tmp_path, monkeypatch, capsys, s
     assert isinstance(run_timestamp, datetime)
     assert len(snapshot) == 1
     assert existing == []
-    assert evidence[0].stream_name == "tool-issues"
+    assert evidence[0].signal_name == "tool-issues"
     artifacts = evidence[0].artifacts
     assert artifacts.catalog_coverage["missing_tool_result"] == 1
     assert any(finding["call_id"] == "missing" for finding in artifacts.findings)

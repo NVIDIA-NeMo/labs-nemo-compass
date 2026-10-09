@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Normalized trace contracts shared by evidence streams and the Analyst."""
+"""Normalized trace contracts shared by Compass Signals and the Analyst."""
 
 from __future__ import annotations
 
@@ -98,6 +98,7 @@ class Span(_TraceModel):
         min_length=1,
         description="Stable span identifier, unique within its containing trace.",
     )
+    source_url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
     kind: SpanKind = Field(description="Normalized span category represented by this source span.")
     children: list[Span] = Field(
         default_factory=list,
@@ -113,7 +114,7 @@ class Span(_TraceModel):
         description="Timezone-aware source end time, when recorded.",
     )
     # UNSET means the value was not recorded; None means it was explicitly
-    # recorded as JSON null. Evidence streams use this to detect missing results.
+    # recorded as JSON null. Compass Signals use this to detect missing results.
     input: JsonValue | UNSET = Field(
         default=UNSET,
         description="Raw recorded input. Omit when absent; explicit JSON null remains null.",
@@ -199,8 +200,8 @@ class TraceAggregate(_TraceModel):
 class Trace(_TraceModel):
     """Canonical representation of one complete end-to-end agent run.
 
-    Source loaders deterministically construct this model before any evidence
-    stream runs. Provider-specific parsing or compatibility logic does not
+    Source loaders deterministically construct this model before any Compass
+    Signal runs. Provider-specific parsing or compatibility logic does not
     belong downstream of this boundary.
     """
 

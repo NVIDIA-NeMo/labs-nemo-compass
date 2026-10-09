@@ -3,12 +3,12 @@
 
 # Trace ingestion
 
-Canonical trace models and provider loaders for use outside Trace Analyst.
+Canonical trace models and provider loaders for use outside NeMo Compass.
 
 Install a pinned Git revision:
 
 ```bash
-uv add "git+https://github.com/NVIDIA-NeMo/labs-trace-intel#subdirectory=packages/trace-ingest" --rev <commit-sha> --extra mlflow
+uv add "git+https://github.com/NVIDIA-NeMo/labs-nemo-compass#subdirectory=packages/trace-ingest" --rev <commit-sha> --extra mlflow
 ```
 
 Load an MLflow export:
@@ -27,5 +27,5 @@ extra for its live loader, and the `langfuse` extra for its live loader.
 For local development, use an editable checkout:
 
 ```bash
-uv add --editable /path/to/labs-trace-intel/packages/trace-ingest --extra mlflow
+uv add --editable /path/to/labs-nemo-compass/packages/trace-ingest --extra mlflow
 ```

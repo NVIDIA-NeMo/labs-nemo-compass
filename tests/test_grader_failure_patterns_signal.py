@@ -8,9 +8,9 @@ import nooa.unifiedllm.unifiedllm as unifiedllm
 from litellm import ModelResponse
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
-from insight_agent.cli.main import _build_llm, _run_evidence_streams, get_config
+from insight_agent.cli.main import _build_llm, _run_compass_signals, get_config
+from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.config import RunConfig
-from insight_agent.evidence_streams.evidence_streams import Problem
 from insight_agent.traces import Span, SpanKind, Trace, TraceAggregate, TraceSnapshot
 
 
@@ -24,7 +24,7 @@ def _response(name, arguments, call_id):
     )
 
 
-def test_eval_model_request_honors_cli_token_limit(monkeypatch, select_streams):
+def test_grader_model_request_honors_cli_token_limit(monkeypatch, select_signals):
     requests = []
 
     async def completion(params):
@@ -57,8 +57,8 @@ def test_eval_model_request_honors_cli_token_limit(monkeypatch, select_streams):
         [
             "--trace.filesystem.path",
             "unused.jsonl",
-            "--evidence-streams",
-            json.dumps(select_streams(eval_failure_patterns={})),
+            "--compass-signals",
+            json.dumps(select_signals(grader_failure_patterns={})),
             "--model",
             "openai/gpt-4o-mini",
             "--max-tokens",
@@ -76,8 +76,8 @@ def test_eval_model_request_honors_cli_token_limit(monkeypatch, select_streams):
         ]
     )
     asyncio.run(
-        _run_evidence_streams(
-            config.evidence_streams,
+        _run_compass_signals(
+            config.compass_signals,
             snapshot,
             lambda: _build_llm(config, "test-key"),
         )
@@ -86,7 +86,7 @@ def test_eval_model_request_honors_cli_token_limit(monkeypatch, select_streams):
     assert all(request["max_tokens"] == 32768 for request in requests)
 
 
-def test_configured_stream_fetches_traces_before_reporting(select_streams):
+def test_configured_signal_fetches_traces_before_reporting(select_signals):
     trace = Trace(
         id="failed",
         aggregate=TraceAggregate(),
@@ -104,11 +104,11 @@ def test_configured_stream_fetches_traces_before_reporting(select_streams):
     )
     config = RunConfig(
         trace={"filesystem": {"path": "unused.jsonl"}},
-        evidence_streams=select_streams(eval_failure_patterns={"max_tool_rounds": 1}),
+        compass_signals=select_signals(grader_failure_patterns={"max_tool_rounds": 1}),
     )
 
     results = asyncio.run(
-        _run_evidence_streams(config.evidence_streams, TraceSnapshot([trace]), lambda: llm)
+        _run_compass_signals(config.compass_signals, TraceSnapshot([trace]), lambda: llm)
     )
 
     assert results[0].problems == (problem,)

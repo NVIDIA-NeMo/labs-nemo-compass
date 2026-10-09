@@ -6,7 +6,7 @@
 Choose persisted Gym rollout JSONL containing `ng_trajectory` schema `1.0` from a
 supported producer path in Gym's
 [trajectory capability matrix](https://docs.nvidia.com/nemo/gym/reference/trajectory-capabilities/).
-Recorded rewards are included in evaluation failure analysis.
+Recorded rewards are included in grader failure analysis.
 
 ## Configure and run
 
@@ -14,7 +14,7 @@ With [uv and Git installed](../../README.md#start-here), install the CLI:
 
 ```bash
 uv tool install \
-  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-trace-intel.git@main'
+  'insight-agent @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
 No Gym installation or optional extra is required.
