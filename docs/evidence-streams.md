@@ -13,11 +13,32 @@ All five evidence streams are enabled by default. Each runs when its prerequisit
 
 ## Ethos divergence
 
-Provide a Markdown file describing your agent’s purpose, business rules, and boundaries.
-Use concrete requirements, such as:
+This evidence stream uses an LLM to compare recorded agent behavior against your written
+requirements and identify possible violations. For example, cancelling an order without required
+confirmation can violate a business rule even if the tool call succeeds.
 
-> Help customers manage orders. Issue refunds only within 30 days of purchase.
-> Ask for confirmation before cancelling an order.
+An **`ethos.md` document** describes your agent’s purpose, business rules, and boundaries:
+what it should accomplish, which actions it may take, and when it must ask for approval or
+decline a request. You write this document to define expected behavior independently of the
+agent’s implementation. It is ordinary Markdown with no required schema or filename.
+
+For more about how the stream evaluates these requirements, see
+[Architecture → Ethos divergence](architecture.md#ethos-divergence).
+
+Use concrete requirements that can be checked against the recorded conversations and actions.
+For an order-support agent, a small `ethos.md` could contain:
+
+```markdown
+# Order-support agent
+
+Help customers manage their orders.
+
+## Business rules
+
+- Issue refunds only within 30 days of purchase.
+- Ask for confirmation before cancelling an order.
+- Decline requests to change another customer's orders.
+```
 
 Save your own rules in `ethos.md`, then add this to your configuration:
 
@@ -28,6 +49,9 @@ evidence_streams:
 ```
 
 The file must exist and contain text. Its path resolves from your working directory.
+Without an `ethos_path`, this stream is skipped. Findings identify the requirement that was
+violated and the supporting trace evidence; a user asking for an out-of-scope action is not
+itself a violation.
 
 ## User sentiment
 
