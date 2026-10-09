@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Load Langfuse v3 traces into the provider-neutral trace contracts."""
+"""Load Langfuse v3 and v4 traces into the provider-neutral trace contracts."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
-from urllib.parse import urljoin
+from typing import TYPE_CHECKING, Literal
+from urllib.parse import quote, urljoin
 
 from pydantic import JsonValue
 
@@ -31,9 +31,13 @@ from trace_ingest.source_links import file_source_url, http_source_url
 
 if TYPE_CHECKING:
     from langfuse import Langfuse
-    from langfuse.api.resources.commons.types.observations_view import ObservationsView
-    from langfuse.api.resources.commons.types.trace_with_details import TraceWithDetails
-    from langfuse.api.resources.commons.types.trace_with_full_details import TraceWithFullDetails
+    from langfuse.api.commons.types.observation_v2 import ObservationV2
+    from langfuse.api.commons.types.observations_view import ObservationsView
+    from langfuse.api.commons.types.trace_with_details import TraceWithDetails
+    from langfuse.api.commons.types.trace_with_full_details import TraceWithFullDetails
+    from langfuse.api.scores_v3.types.score_v3 import ScoreV3
+
+    LangfuseObservation = ObservationsView | ObservationV2
 
 LANGFUSE_DEFAULT_MAX_TRACES = 100
 
@@ -65,8 +69,9 @@ class _LangfuseCorpusDescription(TraceDescription):
 
 
 class LangfuseTraceDescription(_LangfuseCorpusDescription):
-    """Run metadata for a live Langfuse v3 trace query."""
+    """Run metadata for a live Langfuse trace query."""
 
+    api_version: str
     base_url: str
     filter: str | None
     from_timestamp: str
@@ -76,15 +81,18 @@ class LangfuseTraceDescription(_LangfuseCorpusDescription):
 
 @dataclass(frozen=True)
 class LangfuseTraceConfig:
-    """Configuration for loading complete traces through the Langfuse v3 API."""
+    """Configuration for loading traces through the Langfuse v3 or v4 API."""
 
     from_timestamp: datetime
     to_timestamp: datetime
     base_url: str | None = None
     filter_string: str | None = None
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES
+    api_version: Literal["auto", "v3", "v4"] = "auto"
 
     def __post_init__(self) -> None:
+        if self.api_version not in {"auto", "v3", "v4"}:
+            raise ValueError("api_version must be auto, v3, or v4")
         validate_langfuse_time_window(self.from_timestamp, self.to_timestamp)
         if self.max_traces < 1:
             raise ValueError("max_traces must be at least 1")
@@ -101,7 +109,7 @@ def validate_langfuse_time_window(from_timestamp: datetime, to_timestamp: dateti
 
 @dataclass
 class LangfuseTraceLoader:
-    """Load a bounded selection of complete traces from one Langfuse v3 project.
+    """Load a bounded selection of traces from one Langfuse project.
 
     Langfuse API credentials identify the project. A client can be injected for
     tests; otherwise the optional SDK is imported only when this loader runs.
@@ -113,12 +121,19 @@ class LangfuseTraceLoader:
         default_factory=lambda: TraceSnapshot([]), init=False, repr=False
     )
     _base_url: str | None = field(default=None, init=False, repr=False)
+    _api_version: str | None = field(default=None, init=False, repr=False)
 
     def load(self) -> TraceSnapshot:
         """Select trace summaries, fetch their complete details, and normalize them."""
 
         base_url = _resolved_base_url(self.config.base_url)
         client = self.client or _new_langfuse_client(base_url)
+        self._api_version = self._resolve_api_version(client)
+        if self._api_version == "v4":
+            snapshot = self._load_v4(client, base_url)
+            self._base_url = base_url
+            self._snapshot = snapshot
+            return snapshot
         selected = self._select_traces(client)
 
         traces: list[Trace] = []
@@ -146,6 +161,107 @@ class LangfuseTraceLoader:
         self._base_url = base_url
         self._snapshot = snapshot
         return snapshot
+
+    def _resolve_api_version(self, client: Langfuse) -> str:
+        if self.config.api_version != "auto":
+            return self.config.api_version
+        from langfuse.api.core.api_error import ApiError
+
+        try:
+            # Probe capability independently of user filters: bad filters, credentials,
+            # throttling, and server failures must never silently change semantics.
+            client.api.observations.get_many(
+                limit=1,
+                fields="core",
+                from_start_time=self.config.from_timestamp,
+                to_start_time=self.config.to_timestamp,
+            )
+        except ApiError as error:
+            if error.status_code not in {404, 405}:
+                raise
+            return "v3"
+        return "v4"
+
+    def _load_v4(self, client: Langfuse, base_url: str) -> TraceSnapshot:
+        selected: dict[str, datetime] = {}
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        bounded_filter = _bounded_filter(
+            self.config.filter_string,
+            from_timestamp=self.config.from_timestamp,
+            to_timestamp=self.config.to_timestamp,
+            time_column="startTime",
+        )
+        while len(selected) < self.config.max_traces:
+            response = client.api.observations.get_many(
+                limit=_API_PAGE_SIZE,
+                fields="core",
+                from_start_time=self.config.from_timestamp,
+                to_start_time=self.config.to_timestamp,
+                filter=bounded_filter,
+                cursor=cursor,
+            )
+            for observation in response.data:
+                if not observation.trace_id:
+                    raise LangfuseTraceLoadError("Langfuse returned an observation without traceId")
+                selected.setdefault(observation.trace_id, _started_at(observation))
+                if len(selected) == self.config.max_traces:
+                    break
+            if len(selected) == self.config.max_traces:
+                break
+            cursor = _next_cursor(response.meta.cursor, seen_cursors, bool(response.data))
+            if cursor is None:
+                break
+
+        traces: list[Trace] = []
+        for trace_id in sorted(selected, key=lambda key: (selected[key], key)):
+            observations: list[ObservationV2] = []
+            cursor = None
+            seen_cursors = set()
+            while True:
+                # Keep the time bounds so Langfuse can prune its time partitions.
+                # Drop the selection filter to retain other steps of the selected
+                # trace inside this window.
+                response = client.api.observations.get_many(
+                    trace_id=trace_id,
+                    from_start_time=self.config.from_timestamp,
+                    to_start_time=self.config.to_timestamp,
+                    fields="core,basic,io,metadata,model,usage,prompt,trace_context",
+                    limit=_API_PAGE_SIZE,
+                    cursor=cursor,
+                )
+                observations.extend(response.data)
+                cursor = _next_cursor(response.meta.cursor, seen_cursors, bool(response.data))
+                if cursor is None:
+                    break
+            if not observations or any(obs.trace_id != trace_id for obs in observations):
+                raise LangfuseTraceLoadError(
+                    f"Langfuse returned missing or mismatched observations for trace {trace_id!r}"
+                )
+            scores: list[ScoreV3] = []
+            cursor = None
+            seen_cursors = set()
+            while True:
+                score_response = client.api.scores_v3.get_many_v3(
+                    trace_id=trace_id,
+                    fields="details,subject,annotation",
+                    limit=_API_PAGE_SIZE,
+                    cursor=cursor,
+                )
+                scores.extend(score_response.data)
+                cursor = _next_cursor(
+                    score_response.meta.cursor, seen_cursors, bool(score_response.data)
+                )
+                if cursor is None:
+                    break
+            trace = _normalize_v4_trace(trace_id, observations, scores, base_url)
+            trace.attributes["observation_window"] = {
+                "from_timestamp": self.config.from_timestamp.isoformat(),
+                "to_timestamp": self.config.to_timestamp.isoformat(),
+                "may_exclude_trace_steps": True,
+            }
+            traces.append(trace)
+        return TraceSnapshot(traces)
 
     def _select_traces(self, client: Langfuse) -> list[TraceWithDetails]:
         selected: dict[str, TraceWithDetails] = {}
@@ -189,6 +305,7 @@ class LangfuseTraceLoader:
         return {
             **_describe_corpus(f"langfuse:{base_url}", self._snapshot),
             "base_url": base_url,
+            "api_version": self._api_version or self.config.api_version,
             "filter": self.config.filter_string,
             "from_timestamp": self.config.from_timestamp.isoformat(),
             "to_timestamp": self.config.to_timestamp.isoformat(),
@@ -234,9 +351,10 @@ class LangfuseFileTraceLoader:
 
     def load(self) -> TraceSnapshot:
         """Validate native exports and reuse live trace normalization."""
-        from langfuse.api.resources.commons.types.trace_with_full_details import (
+        from langfuse.api.commons.types.trace_with_full_details import (
             TraceWithFullDetails,
         )
+        from langfuse.api.core.pydantic_utilities import parse_obj_as
 
         export_path = self.config.path.resolve()
         files = (
@@ -256,7 +374,7 @@ class LangfuseFileTraceLoader:
             contents = path.read_bytes()
             for index, record in enumerate(_parse_trace_export(contents, path), start=1):
                 try:
-                    provider = TraceWithFullDetails.parse_obj(record)
+                    provider = parse_obj_as(TraceWithFullDetails, record)
                     trace_id = _trace_id(provider)
                     if trace_id in seen:
                         raise LangfuseTraceLoadError(f"duplicate trace id {trace_id!r}")
@@ -379,7 +497,7 @@ def _resolved_base_url(configured: str | None) -> str:
     base_url = configured or os.environ.get("LANGFUSE_BASE_URL")
     if not base_url:
         raise LangfuseTraceLoadError(
-            "Langfuse v3 loading requires trace.langfuse.base_url or LANGFUSE_BASE_URL"
+            "Langfuse loading requires trace.langfuse.base_url or LANGFUSE_BASE_URL"
         )
     return base_url
 
@@ -389,6 +507,7 @@ def _bounded_filter(
     *,
     from_timestamp: datetime,
     to_timestamp: datetime,
+    time_column: str = "timestamp",
 ) -> str | None:
     if filter_string is None:
         return None
@@ -405,13 +524,13 @@ def _bounded_filter(
     time_conditions = [
         {
             "type": "datetime",
-            "column": "timestamp",
+            "column": time_column,
             "operator": ">=",
             "value": from_timestamp.isoformat(),
         },
         {
             "type": "datetime",
-            "column": "timestamp",
+            "column": time_column,
             "operator": "<",
             "value": to_timestamp.isoformat(),
         },
@@ -441,8 +560,58 @@ def _normalize_trace(
     require_complete_tree: bool = False,
 ) -> Trace:
     trace_id = _trace_id(provider_trace)
-    observations = provider_trace.observations
-    by_id: dict[str, ObservationsView] = {}
+    root_spans, ordered, effective_parents = _normalize_tree(
+        trace_id, provider_trace.observations, source_pointer, require_complete_tree
+    )
+    attributes: dict[str, JsonValue] = {
+        "source_pointer": source_pointer,
+        "langfuse": {
+            "trace_name": provider_trace.name,
+            "timestamp": _trace_timestamp(provider_trace).isoformat(),
+            "input": _json_value(provider_trace.input),
+            "output": _json_value(provider_trace.output),
+            "user_id": provider_trace.user_id,
+            "session_id": provider_trace.session_id,
+            "release": provider_trace.release,
+            "version": provider_trace.version,
+            "environment": provider_trace.environment,
+            "tags": _json_value(provider_trace.tags),
+            "public": provider_trace.public,
+            "metadata": _json_value(provider_trace.metadata),
+            "html_path": provider_trace.html_path,
+            "scores": _json_value(provider_trace.scores),
+        },
+    }
+    tool_catalog = _tool_catalog(ordered, effective_parents)
+    if tool_catalog is not None:
+        attributes["tool_catalog"] = tool_catalog
+    if provider_trace.session_id:
+        attributes["logical_case_id"] = str(provider_trace.session_id)
+
+    # Keep repeated evaluations and observation associations rather than choosing a winner.
+    scores_by_name: dict[str, list[JsonValue]] = {}
+    for score in sorted(provider_trace.scores, key=lambda score: (score.name, score.id)):
+        scores_by_name.setdefault(score.name, []).append(_json_value(score))
+
+    return Trace(
+        id=trace_id,
+        root_spans=root_spans,
+        aggregate=TraceAggregate(
+            cost_usd=_trace_cost(provider_trace, ordered),
+            latency_ms=_trace_latency_ms(provider_trace, ordered),
+        ),
+        attributes=attributes,
+        evaluator_results={name: scores for name, scores in scores_by_name.items()},
+    )
+
+
+def _normalize_tree(
+    trace_id: str,
+    observations: Sequence[LangfuseObservation],
+    source_pointer: dict[str, JsonValue],
+    require_complete_tree: bool = False,
+) -> tuple[list[Span], list[LangfuseObservation], dict[str, str | None]]:
+    by_id: dict[str, LangfuseObservation] = {}
     for observation in observations:
         observation_id = str(observation.id)
         if observation_id in by_id:
@@ -489,50 +658,97 @@ def _normalize_trace(
         else:
             normalized_by_id[parent_id].children.append(normalized)
 
+    return root_spans, ordered, effective_parents
+
+
+def _next_cursor(cursor: str | None, seen: set[str], has_data: bool) -> str | None:
+    if cursor is not None:
+        if cursor in seen or not has_data:
+            raise LangfuseTraceLoadError("Langfuse returned non-progressing cursor pagination")
+        seen.add(cursor)
+    return cursor
+
+
+def _v4_observation_context(observation: LangfuseObservation) -> dict[str, JsonValue]:
+    from langfuse.api.commons.types.observation_v2 import ObservationV2
+
+    if not isinstance(observation, ObservationV2):
+        return {}
+    return {
+        "trace_name": observation.trace_name,
+        "user_id": observation.user_id,
+        "session_id": observation.session_id,
+        "tags": _json_value(observation.tags),
+        "release": observation.release,
+        "is_root_observation": observation.is_root_observation,
+    }
+
+
+def _normalize_v4_trace(
+    trace_id: str,
+    observations: Sequence[ObservationV2],
+    scores: Sequence[ScoreV3],
+    base_url: str,
+) -> Trace:
+    pointer: dict[str, JsonValue] = {
+        "provider": "langfuse",
+        "base_url": base_url,
+        "trace_id": trace_id,
+    }
+    roots, ordered, parents = _normalize_tree(trace_id, observations, pointer)
+    # No single trace-level I/O or session is authoritative when several physical
+    # roots exist. Preserve per-observation values rather than choosing arbitrarily.
+    physical_roots = [obs for obs in observations if obs.parent_observation_id is None]
+    root = physical_roots[0] if len(physical_roots) == 1 else None
     attributes: dict[str, JsonValue] = {
-        "source_pointer": source_pointer,
+        "source_pointer": pointer,
         "langfuse": {
-            "trace_name": provider_trace.name,
-            "timestamp": _trace_timestamp(provider_trace).isoformat(),
-            "input": _json_value(provider_trace.input),
-            "output": _json_value(provider_trace.output),
-            "user_id": provider_trace.user_id,
-            "session_id": provider_trace.session_id,
-            "release": provider_trace.release,
-            "version": provider_trace.version,
-            "environment": provider_trace.environment,
-            "tags": _json_value(provider_trace.tags),
-            "public": provider_trace.public,
-            "metadata": _json_value(provider_trace.metadata),
-            "html_path": provider_trace.html_path,
-            "scores": _json_value(provider_trace.scores),
+            "api_version": "v4",
+            "trace_name": root.trace_name if root else None,
+            "timestamp": min(_started_at(obs) for obs in observations).isoformat(),
+            "input": _json_value(_io_value(root.input))
+            if root and root.input is not None
+            else None,
+            "output": _json_value(_io_value(root.output))
+            if root and root.output is not None
+            else None,
+            "scores": _json_value(scores),
         },
     }
-    tool_catalog = _tool_catalog(ordered, effective_parents)
-    if tool_catalog is not None:
-        attributes["tool_catalog"] = tool_catalog
-    if provider_trace.session_id:
-        attributes["logical_case_id"] = str(provider_trace.session_id)
-
-    # Keep repeated evaluations and observation associations rather than choosing a winner.
-    scores_by_name: dict[str, list[JsonValue]] = {}
-    for score in sorted(provider_trace.scores, key=lambda score: (score.name, score.id)):
-        scores_by_name.setdefault(score.name, []).append(_json_value(score))
-
+    sessions = {obs.session_id for obs in observations if obs.session_id}
+    if len(sessions) == 1:
+        attributes["logical_case_id"] = next(iter(sessions))
+    catalog = _tool_catalog(ordered, parents)
+    if catalog is not None:
+        attributes["tool_catalog"] = catalog
+    results: dict[str, list[JsonValue]] = {}
+    for score in sorted(scores, key=lambda item: (item.name, item.id)):
+        results.setdefault(score.name, []).append(_json_value(score))
+    costs = [cost for obs in observations if (cost := _observation_cost(obs)) is not None]
+    starts = [_started_at(obs) for obs in observations]
+    ends = [end for obs in observations if (end := _optional_datetime(obs.end_time)) is not None]
+    project_ids = {obs.project_id for obs in observations}
+    if len(project_ids) != 1:
+        raise LangfuseTraceLoadError("Langfuse returned observations from multiple projects")
+    project_id = next(iter(project_ids))
     return Trace(
         id=trace_id,
-        root_spans=root_spans,
+        root_spans=roots,
+        source_url=http_source_url(
+            base_url.rstrip("/")
+            + f"/project/{quote(project_id, safe='')}/traces/{quote(trace_id, safe='')}"
+        ),
         aggregate=TraceAggregate(
-            cost_usd=_trace_cost(provider_trace, ordered),
-            latency_ms=_trace_latency_ms(provider_trace, ordered),
+            cost_usd=sum(costs) if costs else None,
+            latency_ms=(max(ends) - min(starts)).total_seconds() * 1000 if ends else None,
         ),
         attributes=attributes,
-        evaluator_results={name: scores for name, scores in scores_by_name.items()},
+        evaluator_results=results,
     )
 
 
 def _tool_catalog(
-    observations: Sequence[ObservationsView],
+    observations: Sequence[LangfuseObservation],
     effective_parents: Mapping[str, str | None],
 ) -> dict[str, JsonValue] | None:
     """Extract one safely trace-wide catalog from API-visible Langfuse inputs.
@@ -625,9 +841,9 @@ def _tool_definition(value: object) -> tuple[str, JsonValue] | None:
 
 def _canonical_observation_order(
     trace_id: str,
-    by_id: Mapping[str, ObservationsView],
+    by_id: Mapping[str, LangfuseObservation],
     effective_parents: Mapping[str, str | None],
-) -> list[ObservationsView]:
+) -> list[LangfuseObservation]:
     children: dict[str, list[str]] = {observation_id: [] for observation_id in by_id}
     indegree = {observation_id: 0 for observation_id in by_id}
     for observation_id, parent_id in effective_parents.items():
@@ -640,7 +856,7 @@ def _canonical_observation_order(
         if degree == 0:
             heapq.heappush(ready, (_started_at(by_id[observation_id]), observation_id))
 
-    ordered: list[ObservationsView] = []
+    ordered: list[LangfuseObservation] = []
     while ready:
         _, observation_id = heapq.heappop(ready)
         ordered.append(by_id[observation_id])
@@ -654,7 +870,7 @@ def _canonical_observation_order(
 
 
 def _normalize_observation(
-    observation: ObservationsView,
+    observation: LangfuseObservation,
     *,
     unresolved_parent_id: str | None,
     base_pointer: dict[str, JsonValue],
@@ -699,6 +915,7 @@ def _normalize_observation(
                 "prompt_id": observation.prompt_id,
                 "prompt_name": observation.prompt_name,
                 "prompt_version": observation.prompt_version,
+                **_v4_observation_context(observation),
             },
         },
     )
@@ -714,7 +931,7 @@ def _map_observation_kind(value: object) -> tuple[SpanKind, str | None]:
         return SpanKind.UNKNOWN, provider_type
 
 
-def _started_at(observation: ObservationsView) -> datetime:
+def _started_at(observation: LangfuseObservation) -> datetime:
     value = observation.start_time
     if value.tzinfo is None or value.utcoffset() is None:
         raise LangfuseTraceLoadError(
@@ -731,17 +948,23 @@ def _optional_datetime(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _observation_cost(observation: ObservationsView) -> float | None:
+def _observation_cost(observation: LangfuseObservation) -> float | None:
     details = observation.cost_details or {}
     cost = details.get("total")
     if cost is None:
-        cost = observation.calculated_total_cost
+        from langfuse.api.commons.types.observation_v2 import ObservationV2
+
+        cost = (
+            observation.total_cost
+            if isinstance(observation, ObservationV2)
+            else observation.calculated_total_cost
+        )
     return float(cost) if cost is not None and cost >= 0 else None
 
 
 def _trace_cost(
     provider_trace: TraceWithFullDetails,
-    observations: Sequence[ObservationsView],
+    observations: Sequence[LangfuseObservation],
 ) -> float | None:
     if provider_trace.total_cost is not None and provider_trace.total_cost >= 0:
         return float(provider_trace.total_cost)
@@ -753,7 +976,7 @@ def _trace_cost(
 
 def _trace_latency_ms(
     provider_trace: TraceWithFullDetails,
-    observations: Sequence[ObservationsView],
+    observations: Sequence[LangfuseObservation],
 ) -> float | None:
     if provider_trace.latency is not None and provider_trace.latency >= 0:
         return float(provider_trace.latency) * 1_000

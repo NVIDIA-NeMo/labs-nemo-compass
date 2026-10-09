@@ -162,6 +162,7 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
         source = config.langfuse
         return LangfuseTraceLoader(
             LangfuseTraceConfig(
+                api_version=source.api_version,
                 base_url=source.base_url,
                 from_timestamp=source.from_timestamp,
                 to_timestamp=source.to_timestamp,

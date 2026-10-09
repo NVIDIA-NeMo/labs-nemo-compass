@@ -8,13 +8,16 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from langfuse import Langfuse
-from langfuse.api.resources.commons.types.observation_level import ObservationLevel
-from langfuse.api.resources.commons.types.observations_view import ObservationsView
-from langfuse.api.resources.commons.types.trace_with_full_details import TraceWithFullDetails
-from langfuse.api.resources.commons.types.usage import Usage
+from langfuse.api.commons.types.observation_level import ObservationLevel
+from langfuse.api.commons.types.observations_view import ObservationsView
+from langfuse.api.commons.types.trace_with_full_details import TraceWithFullDetails
+from langfuse.api.commons.types.usage import Usage
+from langfuse.api.core.api_error import ApiError
+from langfuse.api.core.pydantic_utilities import parse_obj_as
 
 from insight_agent.compass_signals.tool_issues.signal import (
     detect_trace,
@@ -295,7 +298,7 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
     ]
     payload = provider_trace(observations=[observation("tool", observation_type="TOOL")]).dict()
     payload["scores"] = records
-    native = TraceWithFullDetails.parse_obj(payload)
+    native = parse_obj_as(TraceWithFullDetails, payload)
     if offline:
         export_path = tmp_path / "trace.json"
         export_path.write_text(native.json())
@@ -312,9 +315,9 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
         expected.setdefault(score["name"], []).append(
             {
                 **score,
-                "timestamp": str(START),
-                "createdAt": str(START),
-                "updatedAt": str(END),
+                "timestamp": START.isoformat().replace("+00:00", "Z"),
+                "createdAt": START.isoformat().replace("+00:00", "Z"),
+                "updatedAt": END.isoformat().replace("+00:00", "Z"),
             }
         )
     assert evaluations == expected
@@ -363,7 +366,14 @@ class FakeClient(Langfuse):
         details: dict[str, TraceWithFullDetails],
     ) -> None:
         self.trace = FakeTraceAPI(pages, details)
-        self.api = SimpleNamespace(trace=self.trace)
+        self._fake_api = SimpleNamespace(trace=self.trace, observations=self)
+
+    @property
+    def api(self) -> Any:
+        return self._fake_api
+
+    def get_many(self, **kwargs):
+        raise ApiError(status_code=404, body="Not found")
 
 
 def observation(
@@ -384,14 +394,14 @@ def observation(
 ) -> ObservationsView:
     return ObservationsView(
         id=observation_id,
-        traceId=trace_id,
+        trace_id=trace_id,
         type=observation_type,
         name=name,
-        startTime=start_time,
-        endTime=end_time,
-        completionStartTime=None,
+        start_time=start_time,
+        end_time=end_time,
+        completion_start_time=None,
         model=model,
-        modelParameters={"temperature": 0},
+        model_parameters={"temperature": 0},
         input=input_value,
         version="v2",
         metadata={"source": "test"},
@@ -400,26 +410,26 @@ def observation(
             input=10,
             output=4,
             total=14,
-            totalCost=total_cost,
+            total_cost=total_cost,
         ),
         level=ObservationLevel(level),
-        statusMessage=status_message,
-        parentObservationId=parent_id,
-        promptId="prompt-1",
-        usageDetails={"input": 10, "output": 4},
-        costDetails={"total": total_cost} if total_cost is not None else {},
+        status_message=status_message,
+        parent_observation_id=parent_id,
+        prompt_id="prompt-1",
+        usage_details={"input": 10, "output": 4},
+        cost_details={"total": total_cost} if total_cost is not None else {},
         environment="test",
-        promptName="support",
-        promptVersion=3,
-        modelId=None,
-        inputPrice=None,
-        outputPrice=None,
-        totalPrice=None,
-        calculatedInputCost=None,
-        calculatedOutputCost=None,
-        calculatedTotalCost=total_cost,
+        prompt_name="support",
+        prompt_version=3,
+        model_id=None,
+        input_price=None,
+        output_price=None,
+        total_price=None,
+        calculated_input_cost=None,
+        calculated_output_cost=None,
+        calculated_total_cost=total_cost,
         latency=None,
-        timeToFirstToken=None,
+        time_to_first_token=None,
     )
 
 
@@ -438,17 +448,17 @@ def provider_trace(
         name="support-agent",
         input={"messages": [{"role": "user", "content": "find it"}]},
         output={"answer": "done"},
-        sessionId=session_id,
+        session_id=session_id,
         release="2026.08",
         version="v2",
-        userId="user-1",
+        user_id="user-1",
         metadata={"source": "fixture"},
         tags=["test"],
         public=False,
         environment="test",
-        htmlPath=f"/project/project-1/traces/{trace_id}",
+        html_path=f"/project/project-1/traces/{trace_id}",
         latency=latency,
-        totalCost=total_cost,
+        total_cost=total_cost,
         observations=observations or [],
         scores=[],
     )
