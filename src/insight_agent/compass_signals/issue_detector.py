@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from nooa import Agent
 
-from insight_agent.evidence_streams.evidence_streams import Problem
+from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.traces import TraceSnapshot
 
 

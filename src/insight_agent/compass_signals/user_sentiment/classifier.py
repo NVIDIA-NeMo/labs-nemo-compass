@@ -9,7 +9,7 @@ from typing import Literal
 import numpy as np
 from pydantic import BaseModel, Field
 
-from insight_agent.evidence_streams.user_embedding.embedding import (
+from insight_agent.compass_signals.user_embedding.embedding import (
     UserEmbedding,
     UserEmbeddingProjection,
 )
@@ -28,7 +28,7 @@ class ComplaintClassifier:
 
     def __init__(self, projection: UserEmbeddingProjection) -> None:
         self.projection = projection
-        folder = files("insight_agent.evidence_streams.user_sentiment").joinpath("models")
+        folder = files("insight_agent.compass_signals.user_sentiment").joinpath("models")
         self.metadata = json.loads(folder.joinpath("complaint.json").read_text())
         with folder.joinpath("complaint.npz").open("rb") as handle:
             with np.load(handle, allow_pickle=False) as arrays:

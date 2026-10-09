@@ -66,10 +66,10 @@ Open the saved YAML for descriptions and complete trace/span IDs and links.
 
 Ran:      Anomalies and patterns (5 candidates), tool issues (3 candidates)
 Skipped:  Ethos — no document
-          Evaluation — no results
+          Grader failures — no results
           Sentiment — no embedding backend
 
-To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md
+To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/compass-signals.md
 
 Saved: out/try-next-step/insights.yml
 ```
@@ -79,15 +79,15 @@ Disabled analyses are omitted. Supporting trace counts do not represent a failur
 A **candidate issue** is a problem found during analysis. Further review may merge or
 discard it, so candidate counts can exceed the number of saved insights.
 
-**No findings** means an evidence stream ran and found nothing to report in the available data.
-**Skipped** means it could not run. A limitation beside a completed evidence stream describes
-missing coverage; it does not mean the whole evidence stream was skipped.
+**No findings** means a Compass Signal ran and found nothing to report in the available data.
+**Skipped** means it could not run. A limitation beside a completed Compass Signal describes
+missing coverage; it does not mean the whole Compass Signal was skipped.
 
-## An evidence stream was skipped
+## A Compass Signal was skipped
 
-Open [Evidence streams](evidence-streams.md) for the prerequisite and a setup example.
-[Disable evidence streams](evidence-streams.md#disable-an-evidence-stream) you don’t need in your configuration.
-Disabled evidence streams are omitted from the report.
+Open [Compass Signals](compass-signals.md) for the prerequisite and a setup example.
+[Disable Compass Signals](compass-signals.md#disable-a-compass-signal) you don’t need in your configuration.
+Disabled Compass Signals are omitted from the report.
 
 If no traces were loaded, check your source, filters, and time window first.
 
@@ -118,7 +118,7 @@ insight-agent --config config.yaml --output-path - > run-insights.yml
 
 Progress and the report go to stderr. Piped stdout contains YAML.
 The default output file is still written unless `--output-path -` is selected.
-A successful run, including one with skipped evidence streams or no insights, exits with code 0.
+A successful run, including one with skipped Compass Signals or no insights, exits with code 0.
 Missing required environment settings exit with code 2; other errors exit nonzero.
 
 To carry findings forward, see [repeat a run](configuration.md#repeat-a-run).

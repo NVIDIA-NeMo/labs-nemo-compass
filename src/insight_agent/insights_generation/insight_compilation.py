@@ -15,8 +15,8 @@ from nooa.strategy_validation import InvariantError
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from insight_agent.evidence_streams._trace import walk_spans
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.compass_signals._trace import walk_spans
+from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
 from insight_agent.traces import Trace, TraceSnapshot
 
@@ -160,20 +160,20 @@ def _validate_completions(
 class InsightCompilation(Agent):
     async def compile_insights(
         self,
-        evidence_streams: list[EvidenceStreamResult],
+        compass_signals: list[CompassSignalResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
         run_timestamp: datetime,
     ) -> list[Insight]:
         completions = await self._compile_insights(
-            evidence_streams, trace_snapshot, existing_insights, run_timestamp
+            compass_signals, trace_snapshot, existing_insights, run_timestamp
         )
         return [completion.apply(trace_snapshot, run_timestamp) for completion in completions]
 
     @strategy(CodeActStrategy(config=CodeActConfig(postconditions=[_validate_completions])))
     async def _compile_insights(
         self,
-        evidence_streams: list[EvidenceStreamResult],
+        compass_signals: list[CompassSignalResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
         run_timestamp: datetime,
@@ -189,7 +189,7 @@ class InsightCompilation(Agent):
         could be updating the prompt, changing time outs, fixing code logic,
         updating their agent to use a different model, etc.
 
-        The evidence stream is a set of potential problems that have been
+        The Compass Signal is a set of potential problems that have been
         surfaced by earlier stages. These may be real problems, and they may not
         be fixable.
 
@@ -202,7 +202,7 @@ class InsightCompilation(Agent):
         user 30% of the time though because of an error, that's a huge deal!
 
         Your job is to validate that these insights are all impactful and
-        fixable. If any proposed problem from an Evidence Stream doesn't meet
+        fixable. If any proposed problem from a Compass Signal doesn't meet
         this bar, it should be discarded. Some things are not ideal, but are
         recovered by an agent -- for example sometimes an agent will call a
         coding tool that fails, but then go on to recover. There's not anything
@@ -215,7 +215,7 @@ class InsightCompilation(Agent):
         trace_snapshot.get_trace_by_id(trace_id). Use Python for snapshot scans.
 
         After validating, you must merge the new insights with the existing
-        insights, and across evidence streams.
+        insights, and across Compass Signals.
 
         Here's an example of two insights that are semantic duplicates and
         should be merged:
@@ -282,7 +282,7 @@ class InsightCompilation(Agent):
 
         2. Write predicate(trace), a function that checks whether one trace supports
            the claim. Work with the actual Trace fields. Use supporting_trace_ids,
-           candidate_trace_ids, and stream artifacts to find examples and investigate
+           candidate_trace_ids, and signal artifacts to find examples and investigate
            disagreements. Read traces with trace_snapshot.get_trace_by_id(id).
            walk_spans(trace) yields visits with .span.
 

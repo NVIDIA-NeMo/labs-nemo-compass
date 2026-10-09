@@ -33,9 +33,9 @@ from rich.console import Console
 from trace_ingest.loaders.gym import GymTraceLoader
 
 from insight_agent.cli.output import RunOutput, RunResult, display_name
-from insight_agent.config import EvidenceStreamsConfig, RunConfig, TraceConfig
-from insight_agent.evidence_streams.builtins import registered_builtin_streams
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.compass_signals.builtins import registered_builtin_signals
+from insight_agent.compass_signals.compass_signals import CompassSignalResult
+from insight_agent.config import CompassSignalsConfig, RunConfig, TraceConfig
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.insights_generation.config import (
     ENV_API_BASE,
@@ -110,10 +110,10 @@ def _check_environment(config: RunConfig) -> str:
             required["LANGFUSE_BASE_URL — Langfuse URL; or set trace.langfuse.base_url"] = (
                 os.environ.get("LANGFUSE_BASE_URL")
             )
-    sentiment = config.evidence_streams.user_sentiment
+    sentiment = config.compass_signals.user_sentiment
     if sentiment is not None and sentiment.litellm is not None and sentiment.litellm.api_key_env:
         name = sentiment.litellm.api_key_env
-        hint = "API key named by evidence_streams.user_sentiment.litellm.api_key_env"
+        hint = "API key named by compass_signals.user_sentiment.litellm.api_key_env"
         required[f"{name} — {hint}"] = os.environ.get(name)
 
     missing = [f"  {label}" for label, value in required.items() if not (value or "").strip()]
@@ -214,20 +214,20 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
     )
 
 
-async def _run_evidence_streams(
-    config: EvidenceStreamsConfig,
+async def _run_compass_signals(
+    config: CompassSignalsConfig,
     snapshot: TraceSnapshot,
     llm_factory: Callable[[], UnifiedLLM] | None = None,
     progress: Callable[[Sequence[str]], None] | None = None,
-) -> list[EvidenceStreamResult]:
-    """Run the configured evidence streams concurrently in registration order."""
+) -> list[CompassSignalResult]:
+    """Run the configured Compass Signals concurrently in registration order."""
 
-    registry = registered_builtin_streams(
+    registry = registered_builtin_signals(
         anomaly_and_patterns=config.anomaly_and_patterns,
         tool_issues=config.tool_issues,
         ethos_divergence=config.ethos_divergence,
         user_sentiment=config.user_sentiment,
-        eval_failure_patterns=config.eval_failure_patterns,
+        grader_failure_patterns=config.grader_failure_patterns,
         llm_factory=llm_factory,
     )
 
@@ -237,7 +237,7 @@ async def _run_evidence_streams(
         if progress is not None:
             progress(tuple(name for name in registry.names if name in active))
 
-    async def analyze(name: str) -> EvidenceStreamResult:
+    async def analyze(name: str) -> CompassSignalResult:
         def started() -> None:
             active.add(name)
             changed()
@@ -256,11 +256,11 @@ async def _run_evidence_streams(
 
 
 async def _validate_evidence_with_code(
-    evidence: list[EvidenceStreamResult],
+    evidence: list[CompassSignalResult],
     snapshot: TraceSnapshot,
     code_base_path: Path,
     llm: UnifiedLLM,
-) -> list[EvidenceStreamResult]:
+) -> list[CompassSignalResult]:
     """Keep only Problems that the supplied codebase supports."""
 
     code_base_path = code_base_path.expanduser().resolve()
@@ -268,7 +268,7 @@ async def _validate_evidence_with_code(
         raise ValueError(f"code_base must be an existing directory: {code_base_path}")
     validator = ProblemValidation(code_base_path, llm)
 
-    async def validate_result(result: EvidenceStreamResult) -> EvidenceStreamResult:
+    async def validate_result(result: CompassSignalResult) -> CompassSignalResult:
         validations = []
         for problem in result.problems:
             supporting_traces = tuple(
@@ -324,8 +324,8 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
                 else "Checking prerequisites"
             )
 
-        evidence = await _run_evidence_streams(
-            config.evidence_streams,
+        evidence = await _run_compass_signals(
+            config.compass_signals,
             snapshot,
             lambda: _build_llm(config, api_key),
             progress,
