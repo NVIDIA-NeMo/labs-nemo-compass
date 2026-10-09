@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tool-issue evidence stream.
+"""Tool-issue Compass Signal.
 
 The implementation follows the current seven-category, nineteen-finding
 catalog. It is deterministic, capability-gated, and independent of source
@@ -23,8 +23,8 @@ from typing import Any, Literal
 from jsonschema import validators
 from pydantic import BaseModel, Field
 
-from insight_agent.evidence_streams._trace import walk_spans
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.compass_signals._trace import walk_spans
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.traces import UNSET, SpanKind, Trace, TraceSnapshot
 
 DETECTOR_VERSION = "tid-v1"
@@ -778,7 +778,7 @@ def to_tool_issue_trace(trace: Trace) -> TraceRecord:
 
 
 @dataclass(frozen=True)
-class ToolIssueEvidenceStream:
+class ToolIssueCompassSignal:
     name = "tool-issues"
 
     config: ToolIssueConfig = field(default_factory=ToolIssueConfig)
@@ -792,11 +792,11 @@ class ToolIssueEvidenceStream:
             return "No tool calls"
         return None
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         traces = await asyncio.to_thread(lambda: [to_tool_issue_trace(trace) for trace in snapshot])
         return await asyncio.to_thread(self._analyze, traces)
 
-    def _analyze(self, traces: Sequence[TraceRecord]) -> EvidenceStreamResult:
+    def _analyze(self, traces: Sequence[TraceRecord]) -> CompassSignalResult:
         findings = detect(
             traces,
             retry_threshold=self.config.retry_threshold,
@@ -820,8 +820,8 @@ class ToolIssueEvidenceStream:
                 limited.append(
                     f"tool schemas missing in {scope} {len(traces)} trace{'s' if len(traces) != 1 else ''}"
                 )
-        return EvidenceStreamResult(
-            stream_name=self.name,
+        return CompassSignalResult(
+            signal_name=self.name,
             problems=problems,
             finding_count=len(findings),
             limitations=tuple(limited),

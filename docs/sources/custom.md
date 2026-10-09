@@ -58,4 +58,4 @@ insight-agent --trace.filesystem.path traces.jsonl --max-tokens 16384
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
-for help with findings or skipped evidence streams.
+for help with findings or skipped Compass Signals.

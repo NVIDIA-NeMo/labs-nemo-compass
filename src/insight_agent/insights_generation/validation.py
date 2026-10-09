@@ -14,7 +14,7 @@ from nooa.agentdoc import truncating_pformat
 from nooa.unifiedllm import Tool, ToolCall, UnifiedLLM, create_tool_from_callable
 from pydantic import BaseModel, ConfigDict
 
-from insight_agent.evidence_streams.evidence_streams import Problem
+from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.insights_generation.codebase import CodebaseTools
 from insight_agent.traces import Trace
 

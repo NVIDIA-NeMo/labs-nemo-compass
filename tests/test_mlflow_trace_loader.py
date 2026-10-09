@@ -13,8 +13,8 @@ import pytest
 from mlflow import MlflowClient
 from mlflow.entities import Feedback
 
-from insight_agent.evidence_streams.anomaly_and_patterns.stream import to_anomaly_and_patterns_trace
-from insight_agent.evidence_streams.tool_issues.stream import MISSING, to_tool_issue_trace
+from insight_agent.compass_signals.anomaly_and_patterns.signal import to_anomaly_and_patterns_trace
+from insight_agent.compass_signals.tool_issues.signal import MISSING, to_tool_issue_trace
 from insight_agent.trace_loaders.mlflow import (
     MLflowFileTraceConfig,
     MLflowFileTraceLoader,
@@ -343,7 +343,7 @@ def test_loader_normalizes_mlflow_spans_without_flattening_payloads():
     assert by_id["tool"].tool_call.result_count == 0
 
 
-def test_normalized_mlflow_trace_flows_through_both_evidence_streams():
+def test_normalized_mlflow_trace_flows_through_both_compass_signals():
     root = span(
         "root",
         span_type="AGENT",

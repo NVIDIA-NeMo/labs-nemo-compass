@@ -294,7 +294,7 @@ def test_config_cli_and_source_exclusivity():
         )
 
 
-def test_cli_runs_evidence_streams(rows, tmp_path, monkeypatch, select_streams):
+def test_cli_runs_compass_signals(rows, tmp_path, monkeypatch, select_signals):
     import insight_agent.cli.main as cli
 
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
@@ -315,9 +315,9 @@ def test_cli_runs_evidence_streams(rows, tmp_path, monkeypatch, select_streams):
                     START.isoformat(),
                     "--trace.braintrust.to-timestamp",
                     END.isoformat(),
-                    "--evidence-streams",
+                    "--compass-signals",
                     json.dumps(
-                        select_streams(
+                        select_signals(
                             tool_issues={"include_audit_problems": True}, anomaly_and_patterns={}
                         )
                     ),
@@ -328,8 +328,8 @@ def test_cli_runs_evidence_streams(rows, tmp_path, monkeypatch, select_streams):
             == cli.EXIT_OK
         )
     evidence = compilation.compile_insights.await_args.args[0]
-    assert {e.stream_name for e in evidence} == {"tool-issues", "anomaly-and-patterns"}
-    findings = next(e for e in evidence if e.stream_name == "tool-issues").artifacts.findings
+    assert {e.signal_name for e in evidence} == {"tool-issues", "anomaly-and-patterns"}
+    findings = next(e for e in evidence if e.signal_name == "tool-issues").artifacts.findings
     assert any(
         f["trace_id"] == "root"
         and f["tool_name"] == "lookup"
