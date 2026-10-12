@@ -293,7 +293,7 @@ def test_config_wires_langfuse_source():
     assert instance.config.to_timestamp == END
 
 
-def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
+def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_signals):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
@@ -329,9 +329,9 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
                 START.isoformat(),
                 "--trace.langfuse.to-timestamp",
                 END.isoformat(),
-                "--evidence-streams",
+                "--compass-signals",
                 json.dumps(
-                    select_streams(
+                    select_signals(
                         tool_issues={"include_audit_problems": True}, anomaly_and_patterns={}
                     )
                 ),
@@ -342,8 +342,8 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
         == cli.EXIT_OK
     )
     evidence = compilation.compile_insights.await_args.args[0]
-    assert {item.stream_name for item in evidence} == {"tool-issues", "anomaly-and-patterns"}
-    tool_evidence = next(item for item in evidence if item.stream_name == "tool-issues")
+    assert {item.signal_name for item in evidence} == {"tool-issues", "anomaly-and-patterns"}
+    tool_evidence = next(item for item in evidence if item.signal_name == "tool-issues")
     assert tool_evidence.problems
 
 
