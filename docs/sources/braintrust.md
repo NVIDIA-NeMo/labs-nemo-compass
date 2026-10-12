@@ -4,7 +4,7 @@
 # Analyze Braintrust traces
 
 Choose a project or evaluation experiment containing your agent’s traces.
-Recorded scores on root spans are included automatically in evaluation failure analysis.
+Recorded scores on root spans are included automatically in grader failure analysis.
 
 ## Connect and run
 
@@ -39,7 +39,7 @@ insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
-for help with findings or skipped evidence streams.
+for help with findings or skipped Compass Signals.
 
 ## Select the right traces
 

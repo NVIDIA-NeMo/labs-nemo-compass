@@ -17,14 +17,14 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight
 
-_STREAM_LABELS = {
+_SIGNAL_LABELS = {
     "anomaly-and-patterns": "Anomalies and patterns",
     "tool-issues": "Tool issues",
     "ethos-divergence": "Ethos",
-    "eval-failure-patterns": "Evaluation",
+    "grader-failure-patterns": "Grader failures",
     "user-sentiment": "Sentiment",
 }
 _SKIP_LABELS = {
@@ -36,7 +36,7 @@ _LOG_INTERVAL = 10
 
 
 def display_name(name: str) -> str:
-    return _STREAM_LABELS.get(name, name.replace("-", " ").capitalize())
+    return _SIGNAL_LABELS.get(name, name.replace("-", " ").capitalize())
 
 
 def count(value: int, singular: str) -> str:
@@ -46,7 +46,7 @@ def count(value: int, singular: str) -> str:
 @dataclass
 class RunResult:
     trace_count: int
-    evidence: list[EvidenceStreamResult]
+    evidence: list[CompassSignalResult]
     insights: list[Insight]
     existing_insights: list[Insight] = field(default_factory=list)
     rejected_by_code: int = 0
@@ -129,13 +129,13 @@ class RunOutput:
         if result.insights and output_path != Path("-"):
             self.console.print(Text(f"\nSaved: {output_path}"), soft_wrap=True)
 
-    def _report_checks(self, evidence: list[EvidenceStreamResult]) -> None:
+    def _report_checks(self, evidence: list[CompassSignalResult]) -> None:
         if not evidence:
             return
         completed = []
         skipped = []
         for item in evidence:
-            name = display_name(item.stream_name)
+            name = display_name(item.signal_name)
             if item.skip_reason is not None:
                 reason = _SKIP_LABELS.get(item.skip_reason, item.skip_reason)
                 skipped.append(f"{name} — {reason}")
@@ -150,7 +150,7 @@ class RunOutput:
             if item.limitations:
                 detail += "; " + "; ".join(item.limitations)
             if completed:
-                name = name[:1].lower() + name[1:]
+                name = name.lower()
             completed.append(f"{name} ({detail})")
 
         self.console.print()
@@ -164,6 +164,6 @@ class RunOutput:
         if skipped:
             self.console.print(
                 "\nTo run skipped analyses: "
-                "https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/evidence-streams.md",
+                "https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/compass-signals.md",
                 soft_wrap=True,
             )

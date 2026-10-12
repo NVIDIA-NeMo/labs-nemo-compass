@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Anomaly and recurring-pattern evidence stream.
+"""Anomaly and recurring-pattern Compass Signal.
 
-This module owns the stream entry point and its feature extraction, anomaly
+This module owns the signal entry point and its feature extraction, anomaly
 selection, clustering, recurring-failure analysis, and evidence rendering.
 It surfaces inspectable evidence with exact source pointers; it does not author
 Insights.
@@ -32,8 +32,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from insight_agent.evidence_streams._trace import walk_spans
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.compass_signals._trace import walk_spans
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.traces import UNSET, Span, SpanKind, Trace, TraceSnapshot
 
 N_ESTIMATORS = 300
@@ -83,7 +83,7 @@ FEATURE_LABELS = {
 
 @dataclass(frozen=True)
 class NormalizedCall:
-    """One ordered tool call in the platform-neutral stream contract."""
+    """One ordered tool call in the platform-neutral signal contract."""
 
     call_id: str
     call_index: int
@@ -332,7 +332,7 @@ def extract_trace_features(trace: NormalizedTrace) -> PreparedTrace:
             # backwards compatibility; only the silence is removed.
             if key in numeric:
                 warnings.warn(
-                    f"trace {trace.trace_id!r} metric {key!r} shadows a built-in stream feature; "
+                    f"trace {trace.trace_id!r} metric {key!r} shadows a built-in signal feature; "
                     f"the built-in value {numeric[key]!r} is being replaced by {float(value)!r}. "
                     "Rename the metric unless this is deliberate.",
                     UserWarning,
@@ -752,7 +752,7 @@ def build_evidence_digest(
         "",
         "## Reader contract",
         "",
-        "This stream answers **what is unusual?** and **what recurs?** It does not author an Insight, prove causality, or turn an anomaly into an error. The Analyst must inspect cited traces and may file zero Insights.",
+        "This signal answers **what is unusual?** and **what recurs?** It does not author an Insight, prove causality, or turn an anomaly into an error. The Analyst must inspect cited traces and may file zero Insights.",
         "",
         "## Inventory",
         "",
@@ -1184,7 +1184,7 @@ class AnomalyAndPatternsConfig(BaseModel):
 
 
 @dataclass(frozen=True)
-class AnomalyAndPatternsEvidenceStream:
+class AnomalyAndPatternsCompassSignal:
     name = "anomaly-and-patterns"
 
     config: AnomalyAndPatternsConfig = field(default_factory=AnomalyAndPatternsConfig)
@@ -1194,7 +1194,7 @@ class AnomalyAndPatternsEvidenceStream:
             raise TypeError("anomaly-and-patterns requires AnomalyAndPatternsConfig")
         return None
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         traces = (to_anomaly_and_patterns_trace(trace) for trace in snapshot)
         result = await asyncio.to_thread(
             run_anomaly_and_patterns,
@@ -1206,8 +1206,8 @@ class AnomalyAndPatternsEvidenceStream:
             input_scaling=self.config.input_scaling,
         )
         problems = problems_from_analysis(result)
-        return EvidenceStreamResult(
-            stream_name=self.name,
+        return CompassSignalResult(
+            signal_name=self.name,
             problems=problems,
             finding_count=len(result.failure_events)
             + sum(row.is_anomaly for row in result.anomalies),

@@ -8,24 +8,24 @@ from unittest.mock import Mock
 import pytest
 from nooa.unifiedllm import FakeLLMClient
 
-from insight_agent.cli.main import _run_evidence_streams
-from insight_agent.config import EvidenceStreamsConfig
-from insight_agent.evidence_streams.anomaly_and_patterns.stream import (
+from insight_agent.cli.main import _run_compass_signals
+from insight_agent.compass_signals.anomaly_and_patterns.signal import (
     AnomalyAndPatternsAnalysis,
     NormalizedCall,
     NormalizedTrace,
     problems_from_analysis,
     run_anomaly_and_patterns,
 )
-from insight_agent.evidence_streams.tool_issues.stream import build_cards, problems_from_cards
-from insight_agent.evidence_streams.user_sentiment import stream as sentiment
+from insight_agent.compass_signals.tool_issues.signal import build_cards, problems_from_cards
+from insight_agent.compass_signals.user_sentiment import signal as sentiment
+from insight_agent.config import CompassSignalsConfig
 from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
 
 
-@pytest.mark.parametrize("stream,preview_size", [("tool", 3), ("anomaly", 50)])
-def test_streams_keep_all_candidates_and_limit_review_examples(stream, preview_size):
+@pytest.mark.parametrize("signal,preview_size", [("tool", 3), ("anomaly", 50)])
+def test_signals_keep_all_candidates_and_limit_review_examples(signal, preview_size):
     expected = tuple(f"trace-{i}" for i in range(preview_size + 2))
-    if stream == "tool":
+    if signal == "tool":
         findings = [
             {
                 "trace_id": trace_id,
@@ -120,12 +120,12 @@ def test_missing_prerequisites_skip_analysis_without_llm_calls(monkeypatch):
     llm = FakeLLMClient()
     progress = []
     results = asyncio.run(
-        _run_evidence_streams(EvidenceStreamsConfig(), snapshot, lambda: llm, progress.append)
+        _run_compass_signals(CompassSignalsConfig(), snapshot, lambda: llm, progress.append)
     )
-    assert {item.stream_name for item in results if item.skip_reason} == {
+    assert {item.signal_name for item in results if item.skip_reason} == {
         "tool-issues",
         "ethos-divergence",
-        "eval-failure-patterns",
+        "grader-failure-patterns",
         "user-sentiment",
     }
     assert set().union(*map(set, progress)) == {"anomaly-and-patterns"}
@@ -137,7 +137,7 @@ def test_sentiment_explicit_backends_check_only_local_dependencies(monkeypatch):
     dependencies = Mock()
     monkeypatch.setattr(sentiment, "validate_embedding_dependencies", dependencies)
     snapshot = TraceSnapshot([])
-    local = sentiment.UserSentimentEvidenceStream(
+    local = sentiment.UserSentimentCompassSignal(
         sentiment.UserSentimentConfig(device="cpu"), FakeLLMClient()
     )
     assert local.check_prerequisites(snapshot) == "No embedding backend configured"
@@ -151,7 +151,7 @@ def test_sentiment_explicit_backends_check_only_local_dependencies(monkeypatch):
     with pytest.raises(ValueError, match="local-embedding"):
         local.check_prerequisites(snapshot)
 
-    remote = sentiment.UserSentimentEvidenceStream(
+    remote = sentiment.UserSentimentCompassSignal(
         sentiment.UserSentimentConfig.model_validate(
             {"local_embeddings": True, "litellm": {"model": "openai/qwen"}}
         ),

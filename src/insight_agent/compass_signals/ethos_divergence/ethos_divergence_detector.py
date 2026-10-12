@@ -6,8 +6,8 @@ from __future__ import annotations
 from nooa.unifiedllm import UnifiedLLM
 from pydantic import BaseModel, ConfigDict, FilePath
 
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
-from insight_agent.evidence_streams.issue_detector import IssueDetector
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
+from insight_agent.compass_signals.issue_detector import IssueDetector
 from insight_agent.traces import TraceSnapshot
 
 ETHOS_DIVERGENCE = """
@@ -51,7 +51,7 @@ class EthosDivergenceConfig(BaseModel):
     ethos_path: FilePath | None = None
 
 
-class EthosDivergenceEvidenceStream:
+class EthosDivergenceCompassSignal:
     name = "ethos-divergence"
 
     def __init__(self, config: EthosDivergenceConfig, llm: UnifiedLLM) -> None:
@@ -67,6 +67,6 @@ class EthosDivergenceEvidenceStream:
             raise ValueError("ethos-divergence requires a non-empty ethos document")
         return None
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         problems = await detect_ethos_divergence(snapshot, self.llm, self.ethos)
-        return EvidenceStreamResult(stream_name=self.name, problems=tuple(problems))
+        return CompassSignalResult(signal_name=self.name, problems=tuple(problems))
