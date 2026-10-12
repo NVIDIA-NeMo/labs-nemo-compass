@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Process-wide tracing for one Compass CLI invocation; disabled until configured."""
+"""Process-wide tracing for one Compass CLI invocation; enabled by LangSmith credentials."""
 
 from __future__ import annotations
 
@@ -19,27 +19,29 @@ from opentelemetry import trace
 from insight_agent.config import RunConfig
 from insight_agent.version import __version__
 
+PROJECT = "compass-dogfood"
+
 tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig())
 span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
 
 
 @contextmanager
 def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
-    settings = config.telemetry
-    if settings is not None:
-        default_endpoint = os.getenv("LANGSMITH_ENDPOINT") or "https://api.smith.langchain.com"
-        endpoint = (settings.api_url or default_endpoint).rstrip("/")
-        source = config.trace.langsmith
-        if (
-            source
-            and source.project == settings.project
-            and (source.api_url or default_endpoint).rstrip("/") == endpoint
-        ):
-            raise ValueError("Use a separate telemetry project from the LangSmith input project")
-        headers = {
-            "x-api-key": os.getenv("LANGSMITH_API_KEY") or os.environ["LANGCHAIN_API_KEY"],
-            "Langsmith-Project": settings.project,
-        }
+    api_key = (
+        os.getenv("LANGSMITH_API_KEY", "").strip() or os.getenv("LANGCHAIN_API_KEY", "").strip()
+    )
+    endpoint = (os.getenv("LANGSMITH_ENDPOINT") or "https://api.smith.langchain.com").rstrip("/")
+    source = config.trace.langsmith
+    if (
+        api_key
+        and source
+        and source.project == PROJECT
+        and (source.api_url or endpoint).rstrip("/") == endpoint
+    ):
+        print("Compass telemetry skipped: analyzing the telemetry project itself", file=sys.stderr)
+        api_key = ""
+    if api_key:
+        headers = {"x-api-key": api_key, "Langsmith-Project": PROJECT}
         if workspace := os.getenv("LANGSMITH_WORKSPACE_ID"):
             headers["X-Tenant-Id"] = workspace
         # Nooa prints initialization messages; stdout belongs to the CLI's YAML output.
@@ -51,12 +53,12 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
     try:
         with span("compass") as root:
             root.set_input(config.model_dump(mode="json", exclude={"api_base"}))
-            if settings is not None:
+            if api_key:
                 print(
-                    f"Compass telemetry: full content to {settings.project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
+                    f"Compass telemetry: full content to {PROJECT}; OTLP trace ID {root.get_span_context().trace_id:032x}",
                     file=sys.stderr,
                 )
             yield root
     finally:
-        if settings is not None:
+        if api_key:
             shutdown_traces()

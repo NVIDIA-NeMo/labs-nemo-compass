@@ -95,7 +95,7 @@ def _check_environment(config: RunConfig) -> str:
     load_dotenv()
     api_key = resolve(ENV_API_KEY)
     required = {f"{ENV_API_KEY} — API key for the configured model": api_key}
-    if config.trace.langsmith is not None or config.telemetry is not None:
+    if config.trace.langsmith is not None:
         # Match the LangSmith SDK's legacy alias without importing the optional SDK.
         required["LANGSMITH_API_KEY — API key for LangSmith"] = os.environ.get(
             "LANGSMITH_API_KEY", ""
@@ -276,7 +276,7 @@ async def _validate_evidence_with_code(
         problem: Problem, supporting_traces: tuple[Trace, ...]
     ) -> bool | None:
         with span("validate_problem") as record:
-            record.set_input({"problem": problem})
+            record.set_input({"problem": problem, "code_base": str(code_base_path)})
             decision = await validator.is_supported(problem, supporting_traces)
             record.set_output({"supported": decision})
             return decision

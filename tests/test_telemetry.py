@@ -11,8 +11,23 @@ import yaml
 from insight_agent.traces import Trace, TraceAggregate
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
+def test_analyzing_telemetry_project_skips_export(monkeypatch, capsys):
+    from unittest.mock import patch
+
+    from insight_agent.config import RunConfig
+    from insight_agent.telemetry import telemetry_session
+
+    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
+    config = RunConfig(trace={"langsmith": {"project": "compass-dogfood"}})
+    with patch("insight_agent.telemetry.enable_tracing") as enable:
+        with telemetry_session(config):
+            pass
+    enable.assert_not_called()
+    assert "analyzing the telemetry project itself" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("key_name", [None, "LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"])
+def test_cli_telemetry_in_fresh_process(tmp_path, key_name):
     """Exercise CLI opt-in, library instrumentation, full inputs, and YAML stdout together."""
     source = tmp_path / "input.jsonl"
     source.write_text(
@@ -25,11 +40,13 @@ def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
         + "\n"
     )
     result = subprocess.run(
-        [sys.executable, __file__, str(source), str(enabled)],
+        [sys.executable, __file__, str(source), str(key_name is not None)],
         env={
             **os.environ,
             "INSIGHT_AGENT_API_KEY": "dummy",
-            "LANGSMITH_API_KEY": "test-key",
+            "LANGSMITH_API_KEY": "",
+            "LANGCHAIN_API_KEY": "",
+            **({key_name: "test-key"} if key_name else {}),
             "LANGSMITH_TRACING": "true",
         },
         capture_output=True,
@@ -97,8 +114,6 @@ def _run_cli(source, enabled):
 
     exporter = InMemorySpanExporter()
     args = ["--trace.filesystem.path", str(source)]
-    if enabled:
-        args += ["--telemetry.tier", "full", "--telemetry.project", "test"]
     with patch("insight_agent.telemetry.exporters.otlp", return_value=exporter) as factory:
         with patch("insight_agent.cli.main._run_evidence_streams", analyze):
             assert main(args) == 0
@@ -107,7 +122,7 @@ def _run_cli(source, enabled):
     if not enabled:
         assert not records
     else:
-        assert factory.call_args.args[1]["Langsmith-Project"] == "test"
+        assert factory.call_args.args[1]["Langsmith-Project"] == "compass-dogfood"
         root = next(r for r in records if r.name == "compass")
         assert all(r.context.trace_id == root.context.trace_id for r in records)
         ids = {r.context.span_id for r in records}

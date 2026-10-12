@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -279,39 +277,6 @@ class EvidenceStreamsConfig(ConfigModel):
         return self
 
 
-class CodeReference(ConfigModel):
-    """Immutable reference to the analyzed agent's repository; no source upload."""
-
-    repository: str
-    sha: str = Field(pattern=r"^[0-9a-fA-F]{40}$")
-
-    @field_validator("repository")
-    @classmethod
-    def repository_has_no_credentials(cls, value: str) -> str:
-        url = urlsplit(value)
-        if (
-            url.scheme != "https"
-            or not url.hostname
-            or url.username
-            or url.password
-            or url.query
-            or url.fragment
-        ):
-            raise ValueError(
-                "repository must be an HTTPS URL without credentials, query, or fragment"
-            )
-        return value
-
-
-class TelemetryConfig(ConfigModel):
-    """Explicitly opt in to uploading full execution content to LangSmith."""
-
-    tier: Literal["full"]
-    project: str = Field(min_length=1)
-    api_url: str | None = None
-    analyzed_code: CodeReference | None = None
-
-
 class RunConfig(BaseSettings):
     """The complete public configuration contract for an analysis run."""
 
@@ -321,9 +286,6 @@ class RunConfig(BaseSettings):
         default=None,
         exclude=True,
         description="Optional YAML Analyst configuration",
-    )
-    telemetry: TelemetryConfig | None = Field(
-        default=None, description="Opt-in full-content LangSmith export"
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
