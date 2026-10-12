@@ -91,11 +91,29 @@ Return to your [source guide](../README.md#start-here) to finish setup.
 | An ethos document | Its contents are included in model-based analysis. |
 | Code validation | Selected source excerpts are sent to the inference provider. The validator has read-only file tools. |
 | Remote sentiment embeddings | Extracted user messages are sent to the configured embedding endpoint. |
+| Full-content telemetry (opt-in) | Input snapshots, model/tool exchanges, findings, and supplied context are uploaded to your configured LangSmith project. |
 | Local sentiment embeddings | The embedding model runs on your machine; model and tokenizer files may download on first use. |
 
 Remote sentiment also loads a tokenizer, which may need an initial download.
 Using local trace files still requires inference access. There is no automatic redaction
 of trace content before analysis; choose inputs and endpoints appropriate for your data.
 
-The CLI writes insights to a local YAML file or stdout. It does not publish findings
-back to the trace platform. [Output details](results.md#saved-output).
+The CLI writes insights to a local YAML file or stdout. With telemetry disabled it
+does not publish findings back to the trace platform. [Output details](results.md#saved-output).
+
+Enable telemetry with the `langsmith` extra, `LANGSMITH_API_KEY`, and
+`telemetry: {tier: full, project: compass-dogfood}` in your analysis YAML.
+Set `LANGSMITH_ENDPOINT` to your enterprise API URL and `LANGSMITH_WORKSPACE_ID`
+when your key requires workspace selection. Recording is disabled by default.
+
+Explicit input traces, evidence results, and final insights are captured as JSON.
+Nooa's automatic spans can shorten long code and nested tool/agent outputs;
+they are not a lossless execution archive. This minimal integration uses SDK
+export diagnostics, without snapshot checksums or delivery-completeness counts.
+Credential filtering uses Nooa's patterns, not arbitrary credential values from
+the environment. Only enable full-content recording for approved inputs.
+
+Some providers expose both completion and Responses spans for one request;
+counting every LLM span can double-count calls and usage. In the tested NVIDIA
+route, parent completion spans retain messages and tool schemas even when the
+nested Responses span logs structured-content warnings.

@@ -35,7 +35,7 @@ from trace_ingest.loaders.gym import GymTraceLoader
 from insight_agent.cli.output import RunOutput, RunResult, display_name
 from insight_agent.config import EvidenceStreamsConfig, RunConfig, TraceConfig
 from insight_agent.evidence_streams.builtins import registered_builtin_streams
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.insights_generation.config import (
     ENV_API_BASE,
@@ -47,6 +47,7 @@ from insight_agent.insights_generation.config import (
 from insight_agent.insights_generation.defaults import DEFAULT_MAX_TOKENS, DEFAULT_MODEL
 from insight_agent.insights_generation.insight_compilation import InsightCompilation
 from insight_agent.insights_generation.validation import ProblemValidation
+from insight_agent.telemetry import capture, span, telemetry_session
 from insight_agent.trace_loaders.atif import ATIFTraceLoader
 from insight_agent.trace_loaders.braintrust import (
     BRAINTRUST_DEFAULT_MAX_TRACES,
@@ -77,7 +78,7 @@ from insight_agent.trace_loaders.mlflow import (
     MLflowTraceLoader,
 )
 from insight_agent.trace_loaders.trace_loaders import TraceLoader
-from insight_agent.traces import TraceSnapshot
+from insight_agent.traces import Trace, TraceSnapshot
 
 EXIT_OK = 0
 EXIT_SETUP = 2
@@ -94,7 +95,7 @@ def _check_environment(config: RunConfig) -> str:
     load_dotenv()
     api_key = resolve(ENV_API_KEY)
     required = {f"{ENV_API_KEY} — API key for the configured model": api_key}
-    if config.trace.langsmith is not None:
+    if config.trace.langsmith is not None or config.telemetry is not None:
         # Match the LangSmith SDK's legacy alias without importing the optional SDK.
         required["LANGSMITH_API_KEY — API key for LangSmith"] = os.environ.get(
             "LANGSMITH_API_KEY", ""
@@ -243,7 +244,10 @@ async def _run_evidence_streams(
             changed()
 
         try:
-            return await registry.analyze(name, snapshot, on_start=started)
+            with span(f"evidence.{name}") as record:
+                result = await registry.analyze(name, snapshot, on_start=started)
+                capture(record, "output", result)
+                return result
         finally:
             if name in active:
                 active.remove(name)
@@ -268,13 +272,21 @@ async def _validate_evidence_with_code(
         raise ValueError(f"code_base must be an existing directory: {code_base_path}")
     validator = ProblemValidation(code_base_path, llm)
 
+    async def validate_problem(
+        problem: Problem, supporting_traces: tuple[Trace, ...]
+    ) -> bool | None:
+        with span("validate_problem", {"problem": problem}) as record:
+            decision = await validator.is_supported(problem, supporting_traces)
+            capture(record, "output", {"supported": decision})
+            return decision
+
     async def validate_result(result: EvidenceStreamResult) -> EvidenceStreamResult:
         validations = []
         for problem in result.problems:
             supporting_traces = tuple(
                 snapshot.get_trace_by_id(trace_id) for trace_id in problem.supporting_trace_ids
             )
-            validations.append(validator.is_supported(problem, supporting_traces))
+            validations.append(validate_problem(problem, supporting_traces))
 
         decisions = await asyncio.gather(*validations)
         retained_problems = tuple(
@@ -313,7 +325,13 @@ def _build_llm(config: RunConfig, api_key: str) -> CompletionClient:
 async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
     api_key = _check_environment(config)
     async with output.progress():
-        snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
+        with span("ingestion", config.trace) as record:
+            snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
+            if record is not None:
+                for index, trace in enumerate(snapshot):
+                    with span("input_trace", {"index": index, "trace": trace}):
+                        pass
+            capture(record, "output", {"trace_count": len(snapshot)})
         output.trace_count = len(snapshot)
         output.activity = "Checking prerequisites"
 
@@ -331,6 +349,8 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             progress,
         )
         existing = load_insights(config.existing_insights) if config.existing_insights else []
+        with span("existing_insights", {"insights": existing}):
+            pass
         result = RunResult(
             trace_count=len(snapshot),
             evidence=evidence,
@@ -365,12 +385,17 @@ async def _compile_evidence(
         if not any(item.problems for item in evidence):
             return result.existing_insights
         output.activity = "Reviewing candidate issues for actionable insights"
-        return await InsightCompilation(llm=llm).compile_insights(
-            evidence,
-            snapshot,
-            result.existing_insights,
-            run_timestamp,
-        )
+        with span(
+            "compilation", {"evidence": evidence, "existing_insights": result.existing_insights}
+        ) as record:
+            insights = await InsightCompilation(llm=llm).compile_insights(
+                evidence,
+                snapshot,
+                result.existing_insights,
+                run_timestamp,
+            )
+            capture(record, "output", {"insights": insights})
+            return insights
 
 
 def _render_insights(insights: Sequence[Insight]) -> str:
@@ -429,13 +454,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = RunOutput(Console(stderr=True, markup=False, highlight=False))
     try:
         config = get_config(argv)
-        result = asyncio.run(_generate_insights(config, output))
-        rendered = _render_insights(result.insights)
-        if result.insights:
-            _write_insights(config.output_path, rendered)
-        if config.output_path == Path("-") or not sys.stdout.isatty():
-            print(rendered, end="")
-        output.report(result, config.output_path)
+        _check_environment(config)
+        with telemetry_session(
+            config, lambda message: output.console.print(message, markup=False)
+        ) as record:
+            result = asyncio.run(_generate_insights(config, output))
+            rendered = _render_insights(result.insights)
+            if result.insights:
+                _write_insights(config.output_path, rendered)
+            if config.output_path == Path("-") or not sys.stdout.isatty():
+                print(rendered, end="")
+            output.report(result, config.output_path)
+            capture(
+                record,
+                "output",
+                {
+                    "trace_count": result.trace_count,
+                    "insights": result.insights,
+                    "rejected_by_code": result.rejected_by_code,
+                },
+            )
         return EXIT_OK
     except SetupError as error:
         output.console.print(str(error), soft_wrap=True)
