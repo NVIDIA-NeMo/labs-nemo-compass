@@ -15,6 +15,8 @@ from trace_ingest.loaders.langfuse import (
     LangfuseTraceConfig,
     LangfuseTraceLoader,
     LangfuseTraceLoadError,
+    LangfuseV3TraceLoader,
+    LangfuseV4TraceLoader,
 )
 from trace_ingest.models import UNSET, SpanKind
 
@@ -65,7 +67,8 @@ def loader(handler, *, server_version="4.0.0", **config):
     )
 
 
-def test_v4_pagination_full_tree_scores_and_context():
+@pytest.mark.parametrize("direct", [False, True])
+def test_v4_pagination_full_tree_scores_and_context(direct):
     requests = []
     root = observation("root", start=START, input='{"question":"where?"}')
     child = observation(
@@ -125,6 +128,8 @@ def test_v4_pagination_full_tree_scores_and_context():
         handler,
         filter_string='[{"type":"string","column":"environment","operator":"=","value":"production"}]',
     )
+    if direct:
+        instance = LangfuseV4TraceLoader(instance.config, instance.client, "https://langfuse.test")
     trace = list(instance.load())[0]
     assert instance.describe()["api_version"] == "v4"
     assert trace.source_url == "https://langfuse.test/project/p/traces/t"
@@ -132,13 +137,23 @@ def test_v4_pagination_full_tree_scores_and_context():
     tool = trace.root_spans[0].children[0]
     assert tool.kind == SpanKind.TOOL and tool.output is None
     assert trace.root_spans[0].output is UNSET
+    assert tool.tool_call is not None
     assert tool.tool_call.result_count == 1
     assert trace.aggregate.cost_usd == 0.12
     assert trace.aggregate.latency_ms == 11000
     assert trace.attributes["logical_case_id"] == "s"
-    assert trace.attributes["langfuse"]["input"] == {"question": "where?"}
-    assert [s["value"] for s in trace.evaluator_results["quality"]] == [False, "bad"]
-    assert trace.evaluator_results["quality"][0]["subject"]["traceId"] == "t"
+    context = trace.attributes["langfuse"]
+    assert isinstance(context, dict)
+    assert context["input"] == {"question": "where?"}
+    scores = trace.evaluator_results["quality"]
+    assert isinstance(scores, list)
+    assert all(isinstance(score, dict) for score in scores)
+    assert [score["value"] for score in scores if isinstance(score, dict)] == [False, "bad"]
+    first_score = scores[0]
+    assert isinstance(first_score, dict)
+    subject = first_score["subject"]
+    assert isinstance(subject, dict)
+    assert subject["traceId"] == "t"
     assert len(requests) == 6
 
 
@@ -186,6 +201,7 @@ def test_server_version_selects_api(version, api_version, endpoint):
 
     instance = loader(handler, server_version=None)
     assert instance.describe()["api_version"] is None
+    assert paths == []
     assert list(instance.load()) == []
     assert instance.describe()["api_version"] == api_version
     assert paths == ["/api/public/health", endpoint]
@@ -399,3 +415,31 @@ def test_v4_window_excludes_outside_steps_and_records_partial_scope():
         "to_timestamp": END.isoformat(),
         "may_exclude_trace_steps": True,
     }
+
+
+@pytest.mark.parametrize("loader_type", [LangfuseV3TraceLoader, LangfuseV4TraceLoader])
+def test_version_specific_loaders_do_not_detect_again(loader_type):
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.path)
+        endpoint = (
+            "/api/public/traces"
+            if loader_type is LangfuseV3TraceLoader
+            else "/api/public/v2/observations"
+        )
+        assert request.url.path == endpoint
+        return httpx.Response(
+            200,
+            json={
+                "data": [],
+                "meta": {"page": 1, "limit": 100, "totalItems": 0, "totalPages": 0, "cursor": None},
+            },
+        )
+
+    entry = loader(handler, server_version=None)
+    instance = loader_type(entry.config, entry.client, "https://langfuse.test")
+    assert requests == []
+    assert list(instance.load()) == []
+    assert len(requests) == 1
+    assert instance.describe()["trace_count"] == 0

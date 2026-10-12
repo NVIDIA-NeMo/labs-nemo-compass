@@ -53,6 +53,8 @@ __all__ = [
     "LangfuseTraceConfig",
     "LangfuseTraceDescription",
     "LangfuseTraceLoader",
+    "LangfuseV3TraceLoader",
+    "LangfuseV4TraceLoader",
     "LangfuseTraceLoadError",
     "validate_langfuse_time_window",
 ]
@@ -107,32 +109,62 @@ def validate_langfuse_time_window(from_timestamp: datetime, to_timestamp: dateti
 
 @dataclass
 class LangfuseTraceLoader:
-    """Load a bounded selection of traces from one Langfuse project.
+    """Detect the server version at load time and delegate to its implementation.
 
-    Langfuse API credentials identify the project. A client can be injected for
-    tests; otherwise the optional SDK is imported only when this loader runs.
+    Construction is network-free. The optional SDK is imported only when loading,
+    unless a client has been injected.
     """
 
     config: LangfuseTraceConfig
     client: Langfuse | None = field(default=None, repr=False)
+    _loader: LangfuseV3TraceLoader | LangfuseV4TraceLoader | None = field(
+        default=None, init=False, repr=False
+    )
+
+    def load(self) -> TraceSnapshot:
+        """Create the version-specific loader and load its trace snapshot."""
+        base_url = _resolved_base_url(self.config.base_url)
+        client = self.client or _new_langfuse_client(base_url)
+        api_version = self._resolve_api_version(client)
+        loader_type = LangfuseV3TraceLoader if api_version == "v3" else LangfuseV4TraceLoader
+        self._loader = loader_type(self.config, client, base_url)
+        return self._loader.load()
+
+    def _resolve_api_version(self, client: Langfuse) -> str:
+        version = client.api.health.health().version
+        match = re.fullmatch(r"v?([0-9]+)\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?", version)
+        if match is None or match[1] not in {"3", "4"}:
+            raise LangfuseTraceLoadError(
+                f"Unsupported Langfuse server version {version!r} from /api/public/health; "
+                "expected a v3 or v4 release."
+            )
+        return f"v{match[1]}"
+
+    def describe(self) -> LangfuseTraceDescription:
+        """Report the selected implementation's corpus, or the unloaded source."""
+        if self._loader is not None:
+            return self._loader.describe()
+        return _describe_live_source(
+            self.config, _resolved_base_url(self.config.base_url), None, TraceSnapshot([])
+        )
+
+
+@dataclass
+class LangfuseV3TraceLoader:
+    """Load trace records and full trace details from a detected v3 server."""
+
+    config: LangfuseTraceConfig
+    client: Langfuse = field(repr=False)
+    base_url: str
     _snapshot: TraceSnapshot = field(
         default_factory=lambda: TraceSnapshot([]), init=False, repr=False
     )
-    _base_url: str | None = field(default=None, init=False, repr=False)
-    _api_version: str | None = field(default=None, init=False, repr=False)
 
     def load(self) -> TraceSnapshot:
         """Select trace summaries, fetch their complete details, and normalize them."""
-
-        base_url = _resolved_base_url(self.config.base_url)
-        client = self.client or _new_langfuse_client(base_url)
-        self._api_version = self._resolve_api_version(client)
-        if self._api_version == "v4":
-            snapshot = self._load_v4(client, base_url)
-            self._base_url = base_url
-            self._snapshot = snapshot
-            return snapshot
-        selected = self._select_traces(client)
+        client = self.client
+        base_url = self.base_url
+        selected = self._select_traces()
 
         traces: list[Trace] = []
         # Query-summary timestamps determine ordering, even if detail timestamps differ.
@@ -156,21 +188,64 @@ class LangfuseTraceLoader:
             traces.append(trace)
 
         snapshot = TraceSnapshot(traces)
-        self._base_url = base_url
         self._snapshot = snapshot
         return snapshot
 
-    def _resolve_api_version(self, client: Langfuse) -> str:
-        version = client.api.health.health().version
-        match = re.fullmatch(r"v?([0-9]+)\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?", version)
-        if match is None or match[1] not in {"3", "4"}:
-            raise LangfuseTraceLoadError(
-                f"Unsupported Langfuse server version {version!r} from /api/public/health; "
-                "expected a v3 or v4 release."
-            )
-        return f"v{match[1]}"
+    def _select_traces(self) -> list[TraceWithDetails]:
+        selected: dict[str, TraceWithDetails] = {}
+        page = 1
+        page_size = min(self.config.max_traces, _API_PAGE_SIZE)
+        filter_string = _bounded_filter(
+            self.config.filter_string,
+            from_timestamp=self.config.from_timestamp,
+            to_timestamp=self.config.to_timestamp,
+        )
 
-    def _load_v4(self, client: Langfuse, base_url: str) -> TraceSnapshot:
+        while len(selected) < self.config.max_traces:
+            response = self.client.api.trace.list(
+                page=page,
+                limit=page_size,
+                from_timestamp=self.config.from_timestamp,
+                to_timestamp=self.config.to_timestamp,
+                order_by="timestamp.desc",
+                fields=_LIST_FIELDS,
+                filter=filter_string,
+            )
+            for trace in response.data:
+                selected.setdefault(_trace_id(trace), trace)
+                if len(selected) == self.config.max_traces:
+                    break
+
+            if page >= response.meta.total_pages or len(selected) == self.config.max_traces:
+                break
+            if not response.data:
+                raise LangfuseTraceLoadError(
+                    "Langfuse returned an empty trace page before the final page"
+                )
+            page += 1
+
+        return list(selected.values())
+
+    def describe(self) -> LangfuseTraceDescription:
+        """Describe the configured source and most recently loaded corpus."""
+        return _describe_live_source(self.config, self.base_url, "v3", self._snapshot)
+
+
+@dataclass
+class LangfuseV4TraceLoader:
+    """Load observations and scores from a detected v4 server."""
+
+    config: LangfuseTraceConfig
+    client: Langfuse = field(repr=False)
+    base_url: str
+    _snapshot: TraceSnapshot = field(
+        default_factory=lambda: TraceSnapshot([]), init=False, repr=False
+    )
+
+    def load(self) -> TraceSnapshot:
+        """Reconstruct bounded traces from observations and separately fetched scores."""
+        client = self.client
+        base_url = self.base_url
         selected: dict[str, datetime] = {}
         cursor: str | None = None
         seen_cursors: set[str] = set()
@@ -249,56 +324,29 @@ class LangfuseTraceLoader:
                 "may_exclude_trace_steps": True,
             }
             traces.append(trace)
-        return TraceSnapshot(traces)
-
-    def _select_traces(self, client: Langfuse) -> list[TraceWithDetails]:
-        selected: dict[str, TraceWithDetails] = {}
-        page = 1
-        page_size = min(self.config.max_traces, _API_PAGE_SIZE)
-        filter_string = _bounded_filter(
-            self.config.filter_string,
-            from_timestamp=self.config.from_timestamp,
-            to_timestamp=self.config.to_timestamp,
-        )
-
-        while len(selected) < self.config.max_traces:
-            response = client.api.trace.list(
-                page=page,
-                limit=page_size,
-                from_timestamp=self.config.from_timestamp,
-                to_timestamp=self.config.to_timestamp,
-                order_by="timestamp.desc",
-                fields=_LIST_FIELDS,
-                filter=filter_string,
-            )
-            for trace in response.data:
-                selected.setdefault(_trace_id(trace), trace)
-                if len(selected) == self.config.max_traces:
-                    break
-
-            if page >= response.meta.total_pages or len(selected) == self.config.max_traces:
-                break
-            if not response.data:
-                raise LangfuseTraceLoadError(
-                    "Langfuse returned an empty trace page before the final page"
-                )
-            page += 1
-
-        return list(selected.values())
+        self._snapshot = TraceSnapshot(traces)
+        return self._snapshot
 
     def describe(self) -> LangfuseTraceDescription:
         """Describe the configured source and most recently loaded corpus."""
+        return _describe_live_source(self.config, self.base_url, "v4", self._snapshot)
 
-        base_url = self._base_url or _resolved_base_url(self.config.base_url)
-        return {
-            **_describe_corpus(f"langfuse:{base_url}", self._snapshot),
-            "base_url": base_url,
-            "api_version": self._api_version,
-            "filter": self.config.filter_string,
-            "from_timestamp": self.config.from_timestamp.isoformat(),
-            "to_timestamp": self.config.to_timestamp.isoformat(),
-            "max_traces": self.config.max_traces,
-        }
+
+def _describe_live_source(
+    config: LangfuseTraceConfig,
+    base_url: str,
+    api_version: str | None,
+    snapshot: TraceSnapshot,
+) -> LangfuseTraceDescription:
+    return {
+        **_describe_corpus(f"langfuse:{base_url}", snapshot),
+        "base_url": base_url,
+        "api_version": api_version,
+        "filter": config.filter_string,
+        "from_timestamp": config.from_timestamp.isoformat(),
+        "to_timestamp": config.to_timestamp.isoformat(),
+        "max_traces": config.max_traces,
+    }
 
 
 class LangfuseFileTraceDescription(_LangfuseCorpusDescription):

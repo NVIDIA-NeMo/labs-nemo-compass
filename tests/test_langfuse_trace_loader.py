@@ -17,6 +17,7 @@ from langfuse.api.commons.types.observations_view import ObservationsView
 from langfuse.api.commons.types.trace_with_full_details import TraceWithFullDetails
 from langfuse.api.commons.types.usage import Usage
 from langfuse.api.core.pydantic_utilities import parse_obj_as
+from trace_ingest.loaders.langfuse import LangfuseV3TraceLoader
 
 from insight_agent.config import LangfuseConfig
 from insight_agent.evidence_streams.tool_issues.stream import (
@@ -37,7 +38,8 @@ END = START + timedelta(hours=1)
 
 
 @pytest.mark.parametrize("envelope", [False, True])
-def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelope):
+@pytest.mark.parametrize("direct", [False, True])
+def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelope, direct):
     for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
@@ -55,12 +57,16 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelop
     export_path.write_text(json.dumps(exported))
     loader = LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path))
     offline = list(loader.load())
-    live = list(
-        LangfuseTraceLoader(
-            LangfuseTraceConfig(START, END, base_url="https://langfuse.test"),
-            client=FakeClient([([native], 1)], {native.id: native}),
-        ).load()
+    config = LangfuseTraceConfig(START, END, base_url="https://langfuse.test")
+    client = FakeClient([([native], 1)], {native.id: native})
+    live_loader = (
+        LangfuseV3TraceLoader(config, client, "https://langfuse.test")
+        if direct
+        else LangfuseTraceLoader(config, client=client)
     )
+    live = list(live_loader.load())
+    assert live_loader.describe()["api_version"] == "v3"
+    assert live_loader.describe()["trace_count"] == 1
 
     # Provenance intentionally distinguishes a frozen file from a live query.
     def without_pointers(value):
