@@ -100,20 +100,3 @@ of trace content before analysis; choose inputs and endpoints appropriate for yo
 
 The CLI writes insights to a local YAML file or stdout. With telemetry disabled it
 does not publish findings back to the trace platform. [Output details](results.md#saved-output).
-
-Enable telemetry with the `langsmith` extra, `LANGSMITH_API_KEY`, and
-`telemetry: {tier: full, project: compass-dogfood}` in your analysis YAML.
-Set `LANGSMITH_ENDPOINT` to your enterprise API URL and `LANGSMITH_WORKSPACE_ID`
-when your key requires workspace selection. Recording is disabled by default.
-
-Explicit input traces, evidence results, and final insights are captured as JSON.
-Nooa's automatic spans can shorten long code and nested tool/agent outputs;
-they are not a lossless execution archive. This minimal integration uses SDK
-export diagnostics, without snapshot checksums or delivery-completeness counts.
-Credential filtering uses Nooa's patterns, not arbitrary credential values from
-the environment. Only enable full-content recording for approved inputs.
-
-Some providers expose both completion and Responses spans for one request;
-counting every LLM span can double-count calls and usage. In the tested NVIDIA
-route, parent completion spans retain messages and tool schemas even when the
-nested Responses span logs structured-content warnings.
