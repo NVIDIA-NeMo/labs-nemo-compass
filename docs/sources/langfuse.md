@@ -9,12 +9,6 @@ Recorded scores, including scores attached to observations, are included automat
 The live adapter supports Langfuse v3 and v4 (including Langfuse Cloud).
 It reads the server version from `GET /api/public/health` and automatically uses
 the v3 trace API for server releases 3.x or the observations-based path for 4.x.
-Health endpoint errors and unrecognized or unsupported server versions are reported
-without falling back to another API. The detected API is recorded in the run's
-source description; it is unknown until the first successful detection.
-
-The optional dependency is Python SDK `>=4.17,<5`, locked to 4.17.0. The SDK's
-legacy trace methods keep v3 deployments and existing v3 exports usable.
 
 ## Connect and run
 
