@@ -15,13 +15,13 @@ from pydantic_settings import (
 )
 from trace_ingest.loaders.gym import GymTraceConfig
 
-from insight_agent.evidence_streams.anomaly_and_patterns.stream import AnomalyAndPatternsConfig
-from insight_agent.evidence_streams.ethos_divergence.ethos_divergence_detector import (
+from insight_agent.compass_signals.anomaly_and_patterns.signal import AnomalyAndPatternsConfig
+from insight_agent.compass_signals.ethos_divergence.ethos_divergence_detector import (
     EthosDivergenceConfig,
 )
-from insight_agent.evidence_streams.eval_failure_patterns import EvalFailurePatternsConfig
-from insight_agent.evidence_streams.tool_issues.stream import ToolIssueConfig
-from insight_agent.evidence_streams.user_sentiment.stream import UserSentimentConfig
+from insight_agent.compass_signals.grader_failure_patterns import GraderFailurePatternsConfig
+from insight_agent.compass_signals.tool_issues.signal import ToolIssueConfig
+from insight_agent.compass_signals.user_sentiment.signal import UserSentimentConfig
 from insight_agent.trace_loaders.atif import ATIFTraceConfig
 from insight_agent.trace_loaders.braintrust import validate_braintrust_selection
 from insight_agent.trace_loaders.intake import IntakeTraceLoaderConfig
@@ -222,32 +222,32 @@ class TraceConfig(ConfigModel):
         return self
 
 
-class AnomalyAndPatternsStreamConfig(AnomalyAndPatternsConfig):
+class AnomalyAndPatternsSignalConfig(AnomalyAndPatternsConfig):
     """Strict YAML settings for anomaly-and-pattern evidence."""
 
     model_config = ConfigDict(extra="forbid")
 
 
-class ToolIssueStreamConfig(ToolIssueConfig):
+class ToolIssueSignalConfig(ToolIssueConfig):
     """Strict YAML settings for deterministic tool-issue evidence."""
 
     model_config = ConfigDict(extra="forbid")
 
 
-class EvidenceStreamsConfig(ConfigModel):
-    """All streams run by default; use false to disable, true or {} for defaults."""
+class CompassSignalsConfig(ConfigModel):
+    """All signals run by default; use false to disable, true or {} for defaults."""
 
-    anomaly_and_patterns: AnomalyAndPatternsStreamConfig | None = Field(
-        default_factory=AnomalyAndPatternsStreamConfig,
+    anomaly_and_patterns: AnomalyAndPatternsSignalConfig | None = Field(
+        default_factory=AnomalyAndPatternsSignalConfig,
         description="Anomaly and recurring-pattern evidence",
     )
-    tool_issues: ToolIssueStreamConfig | None = Field(
-        default_factory=ToolIssueStreamConfig,
+    tool_issues: ToolIssueSignalConfig | None = Field(
+        default_factory=ToolIssueSignalConfig,
         description="Deterministic tool-issue evidence",
     )
-    eval_failure_patterns: EvalFailurePatternsConfig | None = Field(
-        default_factory=EvalFailurePatternsConfig,
-        description="LLM review of evaluation-linked failures",
+    grader_failure_patterns: GraderFailurePatternsConfig | None = Field(
+        default_factory=GraderFailurePatternsConfig,
+        description="LLM review of failures linked to recorded grader results",
     )
 
     ethos_divergence: EthosDivergenceConfig | None = Field(default_factory=EthosDivergenceConfig)
@@ -262,18 +262,18 @@ class EvidenceStreamsConfig(ConfigModel):
         return None if value is False else value
 
     @model_validator(mode="after")
-    def at_least_one_stream_is_configured(self) -> EvidenceStreamsConfig:
+    def at_least_one_signal_is_configured(self) -> CompassSignalsConfig:
         if all(
-            stream is None
-            for stream in (
+            signal is None
+            for signal in (
                 self.anomaly_and_patterns,
                 self.tool_issues,
                 self.ethos_divergence,
-                self.eval_failure_patterns,
+                self.grader_failure_patterns,
                 self.user_sentiment,
             )
         ):
-            raise ValueError("at least one evidence stream must be configured")
+            raise ValueError("at least one Compass Signal must be configured")
         return self
 
 
@@ -289,8 +289,8 @@ class RunConfig(BaseSettings):
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
-    evidence_streams: EvidenceStreamsConfig = Field(
-        default_factory=EvidenceStreamsConfig, description="Evidence-stream selection and settings"
+    compass_signals: CompassSignalsConfig = Field(
+        default_factory=CompassSignalsConfig, description="Compass Signal selection and settings"
     )
     code_base: Path | None = Field(
         default=None,

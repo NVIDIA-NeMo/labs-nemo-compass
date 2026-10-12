@@ -16,11 +16,11 @@ from langfuse.api.resources.commons.types.observations_view import ObservationsV
 from langfuse.api.resources.commons.types.trace_with_full_details import TraceWithFullDetails
 from langfuse.api.resources.commons.types.usage import Usage
 
-from insight_agent.config import LangfuseConfig
-from insight_agent.evidence_streams.tool_issues.stream import (
+from insight_agent.compass_signals.tool_issues.signal import (
     detect_trace,
     to_tool_issue_trace,
 )
+from insight_agent.config import LangfuseConfig
 from insight_agent.trace_loaders.langfuse import (
     LangfuseFileTraceConfig,
     LangfuseFileTraceLoader,
@@ -155,7 +155,7 @@ def test_export_empty_directory_and_invalid_limit(tmp_path):
         LangfuseFileTraceConfig(Path("unused"), max_traces=0)
 
 
-def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch, select_streams):
+def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch, select_signals):
     from unittest.mock import AsyncMock
 
     from nooa.unifiedllm import FakeLLMClient
@@ -186,9 +186,9 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
             [
                 "--trace.langfuse-export.path",
                 str(export_path),
-                "--evidence-streams",
+                "--compass-signals",
                 json.dumps(
-                    select_streams(
+                    select_signals(
                         tool_issues={"include_audit_problems": True}, anomaly_and_patterns={}
                     )
                 ),
@@ -199,8 +199,8 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
         == cli.EXIT_OK
     )
     evidence = compilation.compile_insights.await_args.args[0]
-    assert {item.stream_name for item in evidence} == {"tool-issues", "anomaly-and-patterns"}
-    tool_evidence = next(item for item in evidence if item.stream_name == "tool-issues")
+    assert {item.signal_name for item in evidence} == {"tool-issues", "anomaly-and-patterns"}
+    tool_evidence = next(item for item in evidence if item.signal_name == "tool-issues")
     findings = tool_evidence.artifacts.findings
     assert len(findings) == 1
     assert findings[0]["trace_id"] == native.id
@@ -258,7 +258,7 @@ def test_live_order_uses_query_summary_timestamps():
 
 @pytest.mark.parametrize("offline", [False, True])
 def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, offline):
-    from insight_agent.evidence_streams.eval_failure_patterns import _trace_index
+    from insight_agent.compass_signals.grader_failure_patterns import _trace_index
 
     scores = [
         {"id": "numeric", "name": "quality", "dataType": "NUMERIC", "value": 0.25},

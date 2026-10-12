@@ -13,14 +13,14 @@ from nooa import Agent
 from nooa.unifiedllm import UnifiedLLM
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, computed_field
 
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
-from insight_agent.evidence_streams.issue_detector import IssueDetector
-from insight_agent.evidence_streams.user_embedding.embedding import (
+from insight_agent.compass_signals.compass_signals import CompassSignalResult
+from insight_agent.compass_signals.issue_detector import IssueDetector
+from insight_agent.compass_signals.user_embedding.embedding import (
     LiteLLMEmbeddingConfig,
     UserEmbeddingGenerator,
     validate_embedding_dependencies,
 )
-from insight_agent.evidence_streams.user_sentiment.classifier import (
+from insight_agent.compass_signals.user_sentiment.classifier import (
     ComplaintClassifier,
     ScreeningResult,
 )
@@ -160,7 +160,7 @@ class UserSentimentConfig(BaseModel):
     )
 
 
-class UserSentimentEvidenceStream:
+class UserSentimentCompassSignal:
     name = "user-sentiment"
 
     def __init__(self, config: UserSentimentConfig, llm: UnifiedLLM) -> None:
@@ -182,11 +182,11 @@ class UserSentimentEvidenceStream:
     def classifier(self) -> ComplaintClassifier:
         return ComplaintClassifier(self.embedding_generator.projection)
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         async with self.llm:
             return await self._analyze(snapshot)
 
-    async def _analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def _analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         messages = {}
         if len(snapshot):
             extraction = await UserMessageExtractor(llm=self.llm).build_extractor(snapshot)
@@ -214,8 +214,8 @@ class UserSentimentEvidenceStream:
             )
             if any(set(problem.supporting_trace_ids) - candidates.keys() for problem in problems):
                 raise ValueError("User sentiment findings must cite only supplied candidate traces")
-        return EvidenceStreamResult(
-            stream_name=self.name,
+        return CompassSignalResult(
+            signal_name=self.name,
             problems=tuple(problems),
             finding_count=len(candidates),
             skip_reason="No recorded user messages" if not any(messages.values()) else None,

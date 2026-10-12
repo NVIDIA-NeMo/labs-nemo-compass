@@ -7,7 +7,7 @@ Two things in the engine outputs are not natively serialisable:
 
 * ``run_anomaly_and_patterns`` returns ``PreparedTrace`` dataclasses under ``"prepared"``, which
   carry extracted features and evidence.
-* The tool-issue stream's ``MISSING`` sentinel is a bare ``object()``. It should never reach
+* The tool-issue signal's ``MISSING`` sentinel is a bare ``object()``. It should never reach
   ``json.dumps``, and if it somehow does we want ``"<missing>"`` in the output
   rather than a crash three hours into a batch run.
 """
@@ -22,8 +22,8 @@ from typing import Any
 
 from pydantic import BaseModel, JsonValue
 
-from insight_agent.evidence_streams.anomaly_and_patterns.stream import PreparedTrace
-from insight_agent.evidence_streams.tool_issues.stream import MISSING
+from insight_agent.compass_signals.anomaly_and_patterns.signal import PreparedTrace
+from insight_agent.compass_signals.tool_issues.signal import MISSING
 
 __all__ = ["dump_json", "jsonable", "prepared_features", "write_json"]
 

@@ -6,7 +6,7 @@
 Choose persisted Gym rollout JSONL containing `ng_trajectory` schema `1.0` from a
 supported producer path in Gym's
 [trajectory capability matrix](https://docs.nvidia.com/nemo/gym/reference/trajectory-capabilities/).
-Recorded rewards are included in evaluation failure analysis.
+Recorded rewards are included in grader failure analysis.
 
 ## Configure and run
 

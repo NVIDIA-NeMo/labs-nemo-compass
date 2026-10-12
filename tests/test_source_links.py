@@ -11,7 +11,7 @@ from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
 from trace_ingest.source_links import http_source_url
 
-from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult, Problem
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.trace_loaders.fs import FSDataLoader
 from insight_agent.traces import Trace, TraceSnapshot
@@ -86,7 +86,7 @@ def test_links_are_resolved_from_sources_and_existing_artifacts_only(tmp_path):
 
 
 def test_cli_saves_and_prints_loader_links_after_compilation(
-    tmp_path, monkeypatch, capsys, select_streams
+    tmp_path, monkeypatch, capsys, select_signals
 ):
     import insight_agent.cli.main as cli
 
@@ -106,11 +106,11 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
     monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
     monkeypatch.setattr(
         cli,
-        "_run_evidence_streams",
+        "_run_compass_signals",
         AsyncMock(
             return_value=[
-                EvidenceStreamResult(
-                    stream_name="tool-issues",
+                CompassSignalResult(
+                    signal_name="tool-issues",
                     problems=(Problem(description="Failure", supporting_trace_ids=("a", "b")),),
                 )
             ]
@@ -129,8 +129,8 @@ def test_cli_saves_and_prints_loader_links_after_compilation(
                 str(path),
                 "--output-path",
                 str(output),
-                "--evidence-streams",
-                json.dumps(select_streams(tool_issues={})),
+                "--compass-signals",
+                json.dumps(select_signals(tool_issues={})),
             ]
         )
         == cli.EXIT_OK
@@ -254,7 +254,7 @@ def test_span_fields_are_optional_and_jsonl_does_not_accept_provider_links(tmp_p
     assert "span_links" not in insight.model_dump()
 
 
-def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_streams):
+def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_signals):
     from insight_agent.cli import main as cli
     from insight_agent.traces import Span, SpanKind
 
@@ -278,11 +278,11 @@ def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_str
     )
     monkeypatch.setattr(
         cli,
-        "_run_evidence_streams",
+        "_run_compass_signals",
         AsyncMock(
             return_value=[
-                EvidenceStreamResult(
-                    stream_name="tool-issues",
+                CompassSignalResult(
+                    signal_name="tool-issues",
                     problems=(Problem(description="Failure", supporting_trace_ids=("a", "b")),),
                 )
             ]
@@ -301,8 +301,8 @@ def test_cli_emits_resolved_span_links(tmp_path, monkeypatch, capsys, select_str
                 "unused.jsonl",
                 "--output-path",
                 str(output),
-                "--evidence-streams",
-                json.dumps(select_streams(tool_issues={})),
+                "--compass-signals",
+                json.dumps(select_signals(tool_issues={})),
             ]
         )
         == 0

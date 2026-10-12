@@ -17,7 +17,7 @@ in the environment or `.env`.
 | `trace.max_traces` | Limit complete traces from a provider or native export. Unsupported for canonical JSONL, ATIF, and Gym rollouts. |
 | `output_path` | YAML output file; defaults to `insights.yml`. Use `-` for stdout. |
 | `model`, `api_base`, `max_tokens` | [Inference settings](model-access.md#choose-a-model). |
-| `evidence_streams` | [Evidence streams and their prerequisites](evidence-streams.md). All five are enabled by default. |
+| `compass_signals` | [Compass Signals and their prerequisites](compass-signals.md). All five are enabled by default. |
 | `code_base` | [Local agent source](#code-aware-review) to consult during candidate validation and confidence review. |
 | `existing_insights` | Previous JSON or YAML insight collection to reconcile with this run. |
 
