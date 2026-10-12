@@ -11,6 +11,54 @@ import yaml
 from insight_agent.traces import Trace, TraceAggregate
 
 
+def test_execution_metadata_tracks_compass_checkout(monkeypatch, tmp_path):
+    from insight_agent import telemetry
+
+    checkout = tmp_path / "compass"
+    checkout.mkdir()
+    monkeypatch.setattr(telemetry, "__file__", str(checkout / "src/insight_agent/telemetry.py"))
+    monkeypatch.chdir(tmp_path)
+
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(checkout), *args], text=True).strip()
+
+    git("init", "-q")
+    git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "Initial",
+        "--allow-empty",
+    )
+    metadata = telemetry._execution_metadata()
+    assert metadata["compass.git_sha"] == git("rev-parse", "HEAD")
+    assert metadata["compass.git_dirty"] is False
+
+    file = checkout / "source.py"
+    file.write_text("original")
+    assert telemetry._execution_metadata()["compass.git_dirty"] is True  # Untracked.
+    git("add", "source.py")
+    assert telemetry._execution_metadata()["compass.git_dirty"] is True  # Staged only.
+    git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Source")
+    assert telemetry._execution_metadata()["compass.git_dirty"] is False
+    file.write_text("modified")
+    assert telemetry._execution_metadata()["compass.git_dirty"] is True  # Unstaged.
+
+    # A wheel inside another checkout must not claim that repository's identity.
+    monkeypatch.setattr(
+        telemetry, "__file__", str(checkout / ".venv/lib/site-packages/insight_agent/telemetry.py")
+    )
+    metadata = telemetry._execution_metadata()
+    assert set(metadata) == {"compass.version", "nooa.version", "python.version"}
+    assert all(metadata.values())
+    monkeypatch.setattr(telemetry, "__file__", str(checkout / "src/insight_agent/telemetry.py"))
+    monkeypatch.setenv("PATH", "")
+    assert telemetry._execution_metadata() == metadata
+
+
 def test_analyzing_telemetry_project_skips_export(monkeypatch, capsys):
     from unittest.mock import patch
 
@@ -124,6 +172,10 @@ def _run_cli(source, enabled):
     else:
         assert factory.call_args.args[1]["Langsmith-Project"] == "compass-dogfood"
         root = next(r for r in records if r.name == "compass")
+        metadata = json.loads(str((root.attributes or {})["metadata"]))
+        assert metadata["compass.version"]
+        assert metadata["nooa.version"]
+        assert metadata["python.version"]
         assert all(r.context.trace_id == root.context.trace_id for r in records)
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)

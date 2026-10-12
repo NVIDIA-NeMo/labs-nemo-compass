@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import json
 import os
+import platform
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager, redirect_stdout
 from functools import partial
+from pathlib import Path
 
+import nooa
 from nooa.tracing import enable_tracing, exporters, shutdown_traces
 from openinference.instrumentation import OITracer, TraceConfig
 from openinference.instrumentation._spans import OpenInferenceSpan
@@ -23,6 +28,31 @@ PROJECT = "compass-dogfood"
 
 tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig())
 span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
+
+
+def _execution_metadata() -> dict[str, str | bool]:
+    metadata: dict[str, str | bool] = {
+        "compass.version": __version__,
+        "nooa.version": nooa.__version__,
+        "python.version": platform.python_version(),
+    }
+    # Inspect Compass's checkout, not the caller's or analyzed agent's repository.
+    checkout = Path(__file__).resolve().parents[2]
+    if (checkout / ".git").exists():
+        git = partial(
+            subprocess.check_output,
+            cwd=checkout,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+        )
+        try:
+            sha = git(["git", "rev-parse", "HEAD"]).strip()
+            dirty = bool(git(["git", "status", "--porcelain", "--untracked-files=normal"]))
+            metadata.update({"compass.git_sha": sha, "compass.git_dirty": dirty})
+        except (OSError, subprocess.SubprocessError):
+            pass  # Git is optional; installed wheels need only their package version.
+    return metadata
 
 
 @contextmanager
@@ -48,12 +78,13 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
         with redirect_stdout(sys.stderr):
             enable_tracing(
                 exporters=[exporters.otlp(f"{endpoint}/otel/v1/traces", headers)],
-                extra_resource_attrs={"compass.version": __version__},
             )
     try:
         with span("compass") as root:
             root.set_input(config.model_dump(mode="json", exclude={"api_base"}))
             if api_key:
+                # Use OpenInference span metadata for LangSmith compatibility.
+                root.set_attribute("metadata", json.dumps(_execution_metadata()))
                 print(
                     f"Compass telemetry: full content to {PROJECT}; OTLP trace ID {root.get_span_context().trace_id:032x}",
                     file=sys.stderr,
