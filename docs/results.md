@@ -13,6 +13,7 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
+  severity: med
   evidence:
     - trace_id: run-12
       url: https://observability.example.com/traces/run-12
@@ -24,7 +25,6 @@ An illustrative entry in `insights.yml`:
 ```
 
 Open a trace link to review the supporting behavior before deciding what to change.
-The terminal uses trace and span IDs as clickable labels. Plain-text logs show the URLs.
 Each `evidence` entry identifies a supporting trace and optionally its relevant spans.
 URLs are optional and come from the loader, not the inference model.
 
@@ -48,51 +48,71 @@ Each trace entry can list relevant `spans` at any nesting depth, with a `span_id
 optional `url`. Braintrust and live LangSmith supply span links; other sources retain
 span IDs. An entry without spans refers to the whole trace.
 
-The terminal groups spans beneath their trace, one per line. If a span has no link,
-the trace link remains available as a fallback. Displayed IDs are shortened but stay
-distinguishable within their group; saved YAML retains complete IDs and links.
-
 ## Terminal report
 
-A run might report:
+The terminal lists insight titles, supporting-trace counts, and analysis coverage.
+Open the saved YAML for descriptions and complete trace/span IDs and links.
 
 ```text
-Produced 1 insight from 100 traces.
+3 insights from 200 traces
 
-Completed
-  Tool issues          3 candidate issues
-  Evaluation failures  No findings
+1. Agent calls tools absent from the active catalog
+   Evidence: 3 supporting traces
 
-Skipped
-  Ethos divergence     No ethos document
+2. Retries repeat an invalid request
+   Evidence: 8 supporting traces
+
+3. Agent reports success after a failed tool call
+   Evidence: 4 supporting traces
+
+Ran:      Anomalies and patterns (5 candidates), tool issues (3 candidates)
+Skipped:  Ethos — no document
+          Grader failures — no results
+          Sentiment — no embedding backend
+
+To run skipped analyses: https://github.com/NVIDIA-NeMo/labs-nemo-compass/blob/main/docs/compass-signals.md
+
+Saved: out/try-next-step/insights.yml
 ```
+
+Disabled analyses are omitted. Supporting trace counts do not represent a failure rate.
 
 A **candidate issue** is a problem found during analysis. Further review may merge or
 discard it, so candidate counts can exceed the number of saved insights.
 
-**No findings** means an evidence stream ran and found nothing to report in the available data.
-**Skipped** means it could not run. A limitation beside a completed evidence stream describes
-missing coverage; it does not mean the whole evidence stream was skipped.
+**No findings** means a Compass Signal ran and found nothing to report in the available data.
+**Skipped** means it could not run. A limitation beside a completed Compass Signal describes
+missing coverage; it does not mean the whole Compass Signal was skipped.
 
-## An evidence stream was skipped
+## A Compass Signal was skipped
 
-Open [Evidence streams](evidence-streams.md) for the prerequisite and a setup example.
-[Disable evidence streams](evidence-streams.md#disable-an-evidence-stream) you don’t need in your configuration.
-Disabled evidence streams are omitted from the report.
+Open [Compass Signals](compass-signals.md) for the prerequisite and a setup example.
+[Disable Compass Signals](compass-signals.md#disable-a-compass-signal) you don’t need in your configuration.
+Disabled Compass Signals are omitted from the report.
 
 If no traces were loaded, check your source, filters, and time window first.
 
 ## No insights were produced
 
-Read the completed evidence streams and their limitations. The run may have found no actionable
-patterns, or its candidates may not have passed review. This result alone does not
-establish that your agent is free of problems.
+The run may have found no actionable patterns, or its candidates may not have passed
+review. This does not establish that your agent is free of problems. Check the report
+for skipped analyses and limitations.
 
 ## Saved output
 
 The output is a YAML list with `name`, `description`, `evidence`, and optional
-`updated_date` for each insight. Each insight has at least two supporting traces.
-Empty spans and absent URLs are omitted.
+`updated_date`, `severity`, and `confidence` for each insight. Each insight has at least two
+supporting traces. Empty spans and absent URLs are omitted.
+
+`severity` describes observed consequence after recovery: `low`, `med`, or `high`.
+Final compilation assigns it to new insights by default; it is omitted when the
+outcome is unknown. It does not depend on trace count or confidence.
+
+`confidence` describes how well source investigation supports the insight's
+behavior, root cause, scope, and implied remediation. It is set when
+[`code_base`](configuration.md#code-aware-review) is configured, is `low`, `med`, or `high`,
+and is omitted otherwise. Existing insights retain their saved ratings during compilation;
+confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
 didn't already have. It is omitted until that first happens, and an insight that gains
@@ -109,7 +129,7 @@ insight-agent --config config.yaml --output-path - > run-insights.yml
 
 Progress and the report go to stderr. Piped stdout contains YAML.
 The default output file is still written unless `--output-path -` is selected.
-A successful run, including one with skipped evidence streams or no insights, exits with code 0.
+A successful run, including one with skipped Compass Signals or no insights, exits with code 0.
 Missing required environment settings exit with code 2; other errors exit nonzero.
 
 To carry findings forward, see [repeat a run](configuration.md#repeat-a-run).

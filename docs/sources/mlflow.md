@@ -4,7 +4,7 @@
 # Analyze MLflow traces
 
 Choose an experiment containing your agent’s traces. Recorded, named assessments
-are included automatically in evaluation failure analysis.
+are included automatically in grader failure analysis.
 
 ## Connect and run
 
@@ -41,7 +41,7 @@ insight-agent --config config.yaml
 ```
 
 Open `insights.yml` if the run produced insights. [Read your results](../results.md)
-for help with findings or skipped evidence streams.
+for help with findings or skipped Compass Signals.
 
 ## Narrow the input
 

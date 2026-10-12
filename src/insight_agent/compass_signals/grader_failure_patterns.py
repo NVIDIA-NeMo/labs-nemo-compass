@@ -12,9 +12,9 @@ from nooa.strategy_validation import InvariantError
 from nooa.unifiedllm import UnifiedLLM
 from pydantic import BaseModel, ConfigDict, Field
 
-from insight_agent.evidence_streams._trace import walk_spans
-from insight_agent.evidence_streams.evidence_streams import (
-    EvidenceStreamResult,
+from insight_agent.compass_signals._trace import walk_spans
+from insight_agent.compass_signals.compass_signals import (
+    CompassSignalResult,
     Problem,
 )
 from insight_agent.insights_generation.defaults import (
@@ -39,15 +39,15 @@ def _trace_index(snapshot: TraceSnapshot) -> list[dict[str, object]]:
     return sorted(rows, key=lambda row: str(row["trace_id"]))
 
 
-class _EvalFailureReport(BaseModel):
+class _GraderFailureReport(BaseModel):
     problems: tuple[Problem, ...]
 
 
-class _EvalFailureAgent(Protocol):
-    async def find_problems(self, index: list[dict[str, object]]) -> _EvalFailureReport: ...
+class _GraderFailureAgent(Protocol):
+    async def find_problems(self, index: list[dict[str, object]]) -> _GraderFailureReport: ...
 
 
-class EvalFailurePatternsConfig(BaseModel):
+class GraderFailurePatternsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_tool_rounds: int = Field(default=DEFAULT_MAX_TOOL_ROUNDS, ge=1)
@@ -56,18 +56,18 @@ class EvalFailurePatternsConfig(BaseModel):
 def _build_agent(
     snapshot: TraceSnapshot,
     llm: UnifiedLLM,
-    config: EvalFailurePatternsConfig,
-) -> _EvalFailureAgent:
+    config: GraderFailurePatternsConfig,
+) -> _GraderFailureAgent:
     fetched: set[str] = set()
     fetch_calls = 0
 
-    def validate_report(_agent: Agent, report: _EvalFailureReport, _call: object) -> None:
+    def validate_report(_agent: Agent, report: _GraderFailureReport, _call: object) -> None:
         for problem in report.problems:
             cited = set(problem.supporting_trace_ids)
             if missing := cited - fetched:
                 raise InvariantError(f"fetch traces before citing them: {sorted(missing)}")
 
-    class EvalFailureAgent(Agent):
+    class GraderFailureAgent(Agent):
         def fetch_traces(self, trace_ids: list[str]) -> list[dict[str, Any]]:
             """Fetch complete traces from the compact index by exact trace ID."""
             nonlocal fetch_calls
@@ -89,7 +89,7 @@ def _build_agent(
                 )
             )
         )
-        async def find_problems(self, index: list[dict[str, object]]) -> _EvalFailureReport:  # ty: ignore[empty-body] -- Nooa implements the ellipsis method.
+        async def find_problems(self, index: list[dict[str, object]]) -> _GraderFailureReport:  # ty: ignore[empty-body] -- Nooa implements the ellipsis method.
             """Find recurring Problems linked to recorded evaluation signals.
 
             Group the same failure across traces, not merely matching scores.
@@ -99,26 +99,26 @@ def _build_agent(
             """
             ...
 
-    return EvalFailureAgent(llm=llm)
+    return GraderFailureAgent(llm=llm)
 
 
 @dataclass(frozen=True)
-class EvalFailurePatternsEvidenceStream:
-    name = "eval-failure-patterns"
+class GraderFailurePatternsCompassSignal:
+    name = "grader-failure-patterns"
 
     llm: UnifiedLLM
-    config: EvalFailurePatternsConfig = field(default_factory=EvalFailurePatternsConfig)
+    config: GraderFailurePatternsConfig = field(default_factory=GraderFailurePatternsConfig)
 
     def check_prerequisites(self, snapshot: TraceSnapshot) -> str | None:
-        if not isinstance(self.config, EvalFailurePatternsConfig):
-            raise TypeError("eval-failure-patterns requires EvalFailurePatternsConfig")
+        if not isinstance(self.config, GraderFailurePatternsConfig):
+            raise TypeError("grader-failure-patterns requires GraderFailurePatternsConfig")
         if not any(
             value is not None for trace in snapshot for value in trace.evaluator_results.values()
         ):
             return "No evaluator results"
         return None
 
-    async def analyze(self, snapshot: TraceSnapshot) -> EvidenceStreamResult:
+    async def analyze(self, snapshot: TraceSnapshot) -> CompassSignalResult:
         evaluated = await asyncio.to_thread(
             lambda: sum(
                 any(value is not None for value in trace.evaluator_results.values())
@@ -128,8 +128,8 @@ class EvalFailurePatternsEvidenceStream:
         async with self.llm:
             agent = _build_agent(snapshot, self.llm, self.config)
             report = await agent.find_problems(await asyncio.to_thread(_trace_index, snapshot))
-        return EvidenceStreamResult(
-            stream_name=self.name,
+        return CompassSignalResult(
+            signal_name=self.name,
             problems=report.problems,
             limitations=(
                 f"{len(snapshot) - evaluated} of {len(snapshot)} traces lack evaluator results",

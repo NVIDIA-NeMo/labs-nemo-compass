@@ -68,7 +68,7 @@ def _run_cli(source, enabled):
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
     from insight_agent.cli.main import main
-    from insight_agent.evidence_streams.evidence_streams import EvidenceStreamResult
+    from insight_agent.compass_signals.compass_signals import CompassSignalResult
     from insight_agent.telemetry import span
 
     class SmallAgent(Agent):
@@ -108,14 +108,14 @@ def _run_cli(source, enabled):
                     raise ValueError("expected test failure")
             except ValueError:
                 pass
-            result = EvidenceStreamResult(stream_name="test", problems=())
+            result = CompassSignalResult(signal_name="test", problems=())
             record.set_output(result)
             return [result]
 
     exporter = InMemorySpanExporter()
     args = ["--trace.filesystem.path", str(source)]
     with patch("insight_agent.telemetry.exporters.otlp", return_value=exporter) as factory:
-        with patch("insight_agent.cli.main._run_evidence_streams", analyze):
+        with patch("insight_agent.cli.main._run_compass_signals", analyze):
             assert main(args) == 0
         assert factory.called == enabled
     records = exporter.get_finished_spans()
