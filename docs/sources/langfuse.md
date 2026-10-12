@@ -81,11 +81,16 @@ latency describe the loaded steps. Missing parents are reported, but a missing c
 or sibling cannot always be detected. Narrowing the window reduces query work but
 also reduces the evidence available to Compass.
 
-In v4, `filter` uses the [Observations API v2 columns and operators](https://langfuse.com/docs/api-and-data-platform/features/public-api#query-parameters-and-filters).
-For example, `name` means an observation's name; use `traceName` for the trace name,
-and `startTime` instead of the v3 trace `timestamp` column. Environment filters above
-work with both paths. Existing trace filters are not silently translated when a
-server upgrades; review schema-dependent filters when upgrading your server.
+Write `filter` for the Langfuse version you are connecting to. You are responsible
+for using that version's query syntax and filter semantics:
+
+- **Langfuse v3:** [Traces API filters](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces).
+- **Langfuse v4:** [Observations API v2 filters](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations).
+
+Compass checks that the filter is a JSON array of objects, but leaves column,
+operator, and value validation to Langfuse. It does not translate filters between
+versions. For example, `name` selects trace names on v3 and observation names on
+v4; use `traceName` for trace names on v4.
 
 V4 no longer has separate trace-level inputs and outputs. Compass uses the sole physical
 root observation for those values and preserves each step's inputs, outputs, and context.
