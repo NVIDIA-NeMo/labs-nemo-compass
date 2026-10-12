@@ -47,13 +47,18 @@ def page(data, cursor=None):
     return {"data": data, "meta": {"cursor": cursor, "limit": 100}}
 
 
-def loader(handler, **config):
+def loader(handler, *, server_version="4.0.0", **config):
+    def route(request):
+        if server_version is not None and request.url.path == "/api/public/health":
+            return httpx.Response(200, json={"status": "OK", "version": server_version})
+        return handler(request)
+
     client = Langfuse(
         public_key=f"pk-lf-v4-test-{next(CLIENT_IDS)}",
         secret_key="sk-lf-v4-test",
         base_url="https://langfuse.test",
         tracing_enabled=False,
-        httpx_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        httpx_client=httpx.Client(transport=httpx.MockTransport(route)),
     )
     return LangfuseTraceLoader(
         LangfuseTraceConfig(START, END, base_url="https://langfuse.test", **config), client=client
@@ -93,9 +98,6 @@ def test_v4_pagination_full_tree_scores_and_context():
                 ),
             )
         assert request.url.path.endswith("/v2/observations")
-        if q.get("limit") == "1":  # Capability probe is independent of filters.
-            assert "filter" not in q
-            return httpx.Response(200, json=page([]))
         if q.get("traceId"):
             assert q["traceId"] == "t"
             assert "filter" not in q
@@ -137,11 +139,11 @@ def test_v4_pagination_full_tree_scores_and_context():
     assert trace.attributes["langfuse"]["input"] == {"question": "where?"}
     assert [s["value"] for s in trace.evaluator_results["quality"]] == [False, "bad"]
     assert trace.evaluator_results["quality"][0]["subject"]["traceId"] == "t"
-    assert len(requests) == 7
+    assert len(requests) == 6
 
 
-@pytest.mark.parametrize("status", [401, 403, 429, 500])
-def test_probe_does_not_hide_errors(status):
+@pytest.mark.parametrize("status", [401, 403, 404, 405, 429, 500, 503])
+def test_health_does_not_hide_errors(status):
     requests = []
 
     def handler(request):
@@ -149,35 +151,66 @@ def test_probe_does_not_hide_errors(status):
         return httpx.Response(status, json={"message": "failure"})
 
     with pytest.raises(ApiError):
-        loader(handler).load()
-    assert all(r.url.path.endswith("/v2/observations") for r in requests)
+        loader(handler, server_version=None).load()
+    assert requests
+    assert all(r.url.path == "/api/public/health" for r in requests)
 
 
-@pytest.mark.parametrize("mode", ["auto", "v3"])
-def test_v3_fallback_and_explicit_override(mode):
+@pytest.mark.parametrize(
+    ("version", "api_version", "endpoint"),
+    [
+        ("3.155.1", "v3", "/api/public/traces"),
+        ("v3.0.0", "v3", "/api/public/traces"),
+        ("4.0.0", "v4", "/api/public/v2/observations"),
+        ("4.17.0-rc.1+build.2", "v4", "/api/public/v2/observations"),
+    ],
+)
+def test_server_version_selects_api(version, api_version, endpoint):
     paths = []
 
     def handler(request):
         paths.append(request.url.path)
-        if request.url.path.endswith("/v2/observations"):
-            return httpx.Response(404, json={"message": "Not found"})
-        assert request.url.path.endswith("/traces")
+        if request.url.path == "/api/public/health":
+            assert not request.url.params
+            return httpx.Response(200, json={"status": "OK", "version": version})
+        assert request.url.path == endpoint
         return httpx.Response(
             200,
-            json={"data": [], "meta": {"page": 1, "limit": 100, "totalItems": 0, "totalPages": 0}},
+            json=page([])
+            if api_version == "v4"
+            else {
+                "data": [],
+                "meta": {"page": 1, "limit": 100, "totalItems": 0, "totalPages": 0},
+            },
         )
 
-    instance = loader(handler, api_version=mode)
+    instance = loader(handler, server_version=None)
+    assert instance.describe()["api_version"] is None
     assert list(instance.load()) == []
-    assert instance.describe()["api_version"] == "v3"
-    assert len(paths) == (2 if mode == "auto" else 1)
+    assert instance.describe()["api_version"] == api_version
+    assert paths == ["/api/public/health", endpoint]
 
 
-def test_explicit_v4_does_not_fallback():
+@pytest.mark.parametrize("version", ["", "unknown", "4", "4.invalid", "2.55.1", "5.0.0"])
+def test_unsupported_server_version_fails_before_loading(version):
+    def handler(request):
+        pytest.fail(f"Unexpected data request: {request.url}")
+
+    with pytest.raises(LangfuseTraceLoadError, match="Unsupported Langfuse server version"):
+        loader(handler, server_version=version).load()
+
+
+@pytest.mark.parametrize("status", [404, 405])
+def test_v4_data_errors_do_not_fallback(status):
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(status, json={"message": "Not found"})
+
     with pytest.raises(ApiError):
-        loader(
-            lambda r: httpx.Response(404, json={"message": "Not found"}), api_version="v4"
-        ).load()
+        loader(handler).load()
+    assert paths == ["/api/public/v2/observations"]
 
 
 @pytest.mark.parametrize("kind", ["selection", "details", "scores"])
@@ -195,7 +228,7 @@ def test_nonprogressing_cursors_fail(kind):
         )
 
     with pytest.raises(LangfuseTraceLoadError, match="cursor"):
-        loader(handler, api_version="v4").load()
+        loader(handler).load()
 
 
 @pytest.mark.parametrize("case", ["duplicate", "cycle", "wrong_trace", "empty"])
@@ -214,7 +247,7 @@ def test_malformed_tree_rejected(case):
         return httpx.Response(200, json=page([observation("root")]))
 
     with pytest.raises(LangfuseTraceLoadError):
-        loader(handler, api_version="v4").load()
+        loader(handler).load()
 
 
 def test_unique_trace_limit_and_empty_result():
@@ -231,20 +264,17 @@ def test_unique_trace_limit_and_empty_result():
             ),
         )
 
-    result = list(loader(handler, api_version="v4", max_traces=1).load())
+    result = list(loader(handler, max_traces=1).load())
     assert [t.id for t in result] == ["t"]
-    assert list(loader(lambda r: httpx.Response(200, json=page([])), api_version="v4").load()) == []
+    assert list(loader(lambda r: httpx.Response(200, json=page([]))).load()) == []
 
 
-def test_config_wires_api_version():
-    source = LangfuseConfig(from_timestamp=START, to_timestamp=END, api_version="v4")
+def test_config_wires_langfuse_source():
+    source = LangfuseConfig(from_timestamp=START, to_timestamp=END)
     instance = _configured_trace_loader(TraceConfig(langfuse=source))
     assert isinstance(instance, LangfuseTraceLoader)
-    assert instance.config.api_version == "v4"
-    with pytest.raises(ValueError):
-        LangfuseConfig.model_validate(
-            dict(from_timestamp=START, to_timestamp=END, api_version="v5")
-        )
+    assert instance.config.from_timestamp == START
+    assert instance.config.to_timestamp == END
 
 
 def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
@@ -270,6 +300,8 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
     monkeypatch.setattr(adapter, "_new_langfuse_client", lambda base_url: client)
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     monkeypatch.setattr(cli, "_build_llm", lambda *a: FakeLLMClient())
     monkeypatch.setattr(cli, "InsightCompilation", lambda llm: compilation)
     assert (
@@ -277,8 +309,6 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_streams):
             [
                 "--trace.langfuse.base-url",
                 "https://langfuse.test",
-                "--trace.langfuse.api-version",
-                "v4",
                 "--trace.langfuse.from-timestamp",
                 START.isoformat(),
                 "--trace.langfuse.to-timestamp",
@@ -311,7 +341,7 @@ def test_v4_missing_parent_and_conflicting_sessions_remain_visible():
             return httpx.Response(200, json=page([]))
         return httpx.Response(200, json=page([orphan, other]))
 
-    instance = loader(handler, api_version="v4")
+    instance = loader(handler)
     trace = list(instance.load())[0]
     assert instance.describe()["unresolved_parent_count"] == 1
     assert "logical_case_id" not in trace.attributes
@@ -333,7 +363,7 @@ def test_v4_trace_details_include_time_bounds_to_avoid_server_timeout():
             )
         return httpx.Response(200, json=page([observation("root")]))
 
-    assert [trace.id for trace in loader(handler, api_version="v4").load()] == ["t"]
+    assert [trace.id for trace in loader(handler).load()] == ["t"]
 
 
 def test_v4_window_excludes_outside_steps_and_records_partial_scope():
@@ -360,7 +390,7 @@ def test_v4_window_excludes_outside_steps_and_records_partial_scope():
             ),
         )
 
-    instance = loader(handler, api_version="v4")
+    instance = loader(handler)
     trace = list(instance.load())[0]
     assert [span.id for span in trace.root_spans] == ["child"]
     assert instance.describe()["unresolved_parent_count"] == 1

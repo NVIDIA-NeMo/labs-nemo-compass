@@ -8,11 +8,12 @@ from __future__ import annotations
 import heapq
 import json
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 from urllib.parse import quote, urljoin
 
 from pydantic import JsonValue
@@ -71,7 +72,7 @@ class _LangfuseCorpusDescription(TraceDescription):
 class LangfuseTraceDescription(_LangfuseCorpusDescription):
     """Run metadata for a live Langfuse trace query."""
 
-    api_version: str
+    api_version: str | None
     base_url: str
     filter: str | None
     from_timestamp: str
@@ -88,11 +89,8 @@ class LangfuseTraceConfig:
     base_url: str | None = None
     filter_string: str | None = None
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES
-    api_version: Literal["auto", "v3", "v4"] = "auto"
 
     def __post_init__(self) -> None:
-        if self.api_version not in {"auto", "v3", "v4"}:
-            raise ValueError("api_version must be auto, v3, or v4")
         validate_langfuse_time_window(self.from_timestamp, self.to_timestamp)
         if self.max_traces < 1:
             raise ValueError("max_traces must be at least 1")
@@ -163,24 +161,14 @@ class LangfuseTraceLoader:
         return snapshot
 
     def _resolve_api_version(self, client: Langfuse) -> str:
-        if self.config.api_version != "auto":
-            return self.config.api_version
-        from langfuse.api.core.api_error import ApiError
-
-        try:
-            # Probe capability independently of user filters: bad filters, credentials,
-            # throttling, and server failures must never silently change semantics.
-            client.api.observations.get_many(
-                limit=1,
-                fields="core",
-                from_start_time=self.config.from_timestamp,
-                to_start_time=self.config.to_timestamp,
+        version = client.api.health.health().version
+        match = re.fullmatch(r"v?([0-9]+)\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]+)?", version)
+        if match is None or match[1] not in {"3", "4"}:
+            raise LangfuseTraceLoadError(
+                f"Unsupported Langfuse server version {version!r} from /api/public/health; "
+                "expected a v3 or v4 release."
             )
-        except ApiError as error:
-            if error.status_code not in {404, 405}:
-                raise
-            return "v3"
-        return "v4"
+        return f"v{match[1]}"
 
     def _load_v4(self, client: Langfuse, base_url: str) -> TraceSnapshot:
         selected: dict[str, datetime] = {}
@@ -305,7 +293,7 @@ class LangfuseTraceLoader:
         return {
             **_describe_corpus(f"langfuse:{base_url}", self._snapshot),
             "base_url": base_url,
-            "api_version": self._api_version or self.config.api_version,
+            "api_version": self._api_version,
             "filter": self.config.filter_string,
             "from_timestamp": self.config.from_timestamp.isoformat(),
             "to_timestamp": self.config.to_timestamp.isoformat(),

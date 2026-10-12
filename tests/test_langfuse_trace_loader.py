@@ -16,7 +16,6 @@ from langfuse.api.commons.types.observation_level import ObservationLevel
 from langfuse.api.commons.types.observations_view import ObservationsView
 from langfuse.api.commons.types.trace_with_full_details import TraceWithFullDetails
 from langfuse.api.commons.types.usage import Usage
-from langfuse.api.core.api_error import ApiError
 from langfuse.api.core.pydantic_utilities import parse_obj_as
 
 from insight_agent.config import LangfuseConfig
@@ -366,14 +365,14 @@ class FakeClient(Langfuse):
         details: dict[str, TraceWithFullDetails],
     ) -> None:
         self.trace = FakeTraceAPI(pages, details)
-        self._fake_api = SimpleNamespace(trace=self.trace, observations=self)
+        self._fake_api = SimpleNamespace(trace=self.trace, health=self)
 
     @property
     def api(self) -> Any:
         return self._fake_api
 
-    def get_many(self, **kwargs):
-        raise ApiError(status_code=404, body="Not found")
+    def health(self):
+        return SimpleNamespace(status="OK", version="3.155.1")
 
 
 def observation(

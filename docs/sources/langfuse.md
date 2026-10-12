@@ -7,11 +7,11 @@ Choose a time window containing the conversations you want to understand.
 Recorded scores, including scores attached to observations, are included automatically.
 
 The live adapter supports Langfuse v3 and v4 (including Langfuse Cloud).
-It automatically probes the observations endpoint and uses the v3 trace API only
-when that endpoint returns 404 or 405. Authentication, rate-limit, and server errors
-are reported rather than triggering a fallback. To choose explicitly, set
-`trace.langfuse.api_version` to `v3` or `v4` (default: `auto`). The selected API is
-recorded in the run's source description.
+It reads the server version from `GET /api/public/health` and automatically uses
+the v3 trace API for server releases 3.x or the observations-based path for 4.x.
+Health endpoint errors and unrecognized or unsupported server versions are reported
+without falling back to another API. The detected API is recorded in the run's
+source description; it is unknown until the first successful detection.
 
 The optional dependency is Python SDK `>=4.17,<5`, locked to 4.17.0. The SDK's
 legacy trace methods keep v3 deployments and existing v3 exports usable.
@@ -85,7 +85,7 @@ In v4, `filter` uses the [Observations API v2 columns and operators](https://lan
 For example, `name` means an observation's name; use `traceName` for the trace name,
 and `startTime` instead of the v3 trace `timestamp` column. Environment filters above
 work with both paths. Existing trace filters are not silently translated when a
-server upgrades; set `api_version` explicitly when a query depends on one schema.
+server upgrades; review schema-dependent filters when upgrading your server.
 
 V4 no longer has separate trace-level inputs and outputs. Compass uses the sole physical
 root observation for those values and preserves each step's inputs, outputs, and context.

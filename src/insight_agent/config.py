@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -108,7 +107,6 @@ class LangfuseConfig(ConfigModel):
     """Settings owned by the live Langfuse v3/v4 trace loader."""
 
     base_url: str | None = None
-    api_version: Literal["auto", "v3", "v4"] = "auto"
     from_timestamp: datetime
     to_timestamp: datetime
     filter: str | None = None
