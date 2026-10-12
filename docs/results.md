@@ -13,6 +13,7 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
+  severity: med
   evidence:
     - trace_id: run-12
       url: https://observability.example.com/traces/run-12
@@ -100,8 +101,18 @@ for skipped analyses and limitations.
 ## Saved output
 
 The output is a YAML list with `name`, `description`, `evidence`, and optional
-`updated_date` for each insight. Each insight has at least two supporting traces.
-Empty spans and absent URLs are omitted.
+`updated_date`, `severity`, and `confidence` for each insight. Each insight has at least two
+supporting traces. Empty spans and absent URLs are omitted.
+
+`severity` describes observed consequence after recovery: `low`, `med`, or `high`.
+Final compilation assigns it to new insights by default; it is omitted when the
+outcome is unknown. It does not depend on trace count or confidence.
+
+`confidence` describes how well source investigation supports the insight's
+behavior, root cause, scope, and implied remediation. It is set when
+[`code_base`](configuration.md#code-aware-review) is configured, is `low`, `med`, or `high`,
+and is omitted otherwise. Existing insights retain their saved ratings during compilation;
+confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
 didn't already have. It is omitted until that first happens, and an insight that gains

@@ -255,6 +255,21 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
+        After merging findings, assign severity to each new insight based on
+        the observed consequence in its supporting traces, including recovery:
+        - high: the agent fails its primary task, silently loses state, or
+          produces materially incorrect user-visible output without recovery.
+        - med: the agent completes the task but incurs unnecessary turns,
+          delay, partial recovery, or degraded output quality.
+        - low: minor inconvenience or cosmetic impact with no meaningful
+          degradation of the completed task.
+        Leave severity=None when the traces do not establish the outcome.
+        Judge consequence independently of occurrence count and confidence;
+        do not reduce a severe consequence because it occurs in few traces.
+        Use the merged supporting evidence, not just the failing span. Source
+        code access is not required. Preserve existing insights' ratings.
+        Leave confidence=None on new insights; an optional code review sets it.
+
         When inspecting supporting traces, record the specific relevant Span.id values
         in evidence[].spans as span_id, grouped by trace_id. A trace may have several supporting spans
         at any nesting depth. Use only IDs observed in that trace, never event row IDs.

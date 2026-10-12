@@ -71,6 +71,18 @@ def test_cli_accepts_optional_code_base() -> None:
     assert config.code_base == Path("../agent-source")
 
 
+def test_yaml_accepts_code_base(tmp_path: Path) -> None:
+    config_path = tmp_path / "analyst.yaml"
+    config_path.write_text(
+        "trace:\n  filesystem:\n    path: traces.jsonl\ncode_base: ../my-agent\n",
+        encoding="utf-8",
+    )
+
+    config = RunConfig(_cli_parse_args=["--config", str(config_path)])
+
+    assert config.code_base == Path("../my-agent")
+
+
 def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:
     config_path = tmp_path / "analyst.yaml"
     config_path.write_text(
