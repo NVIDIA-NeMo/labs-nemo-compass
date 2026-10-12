@@ -21,9 +21,9 @@ from insight_agent.trace_loaders.braintrust import (
     BraintrustTraceLoadError,
 )
 from insight_agent.trace_loaders.langfuse import (
-    LangfuseFileTraceConfig,
-    LangfuseFileTraceDescription,
-    LangfuseFileTraceLoader,
+    LangfuseV3FileTraceConfig,
+    LangfuseV3FileTraceDescription,
+    LangfuseV3FileTraceLoader,
 )
 
 __all__ = [
@@ -39,7 +39,7 @@ __all__ = [
     "ATIFTraceDescription",
     "ATIFTraceLoadError",
     "ATIFTraceLoader",
-    "LangfuseFileTraceConfig",
-    "LangfuseFileTraceDescription",
-    "LangfuseFileTraceLoader",
+    "LangfuseV3FileTraceConfig",
+    "LangfuseV3FileTraceDescription",
+    "LangfuseV3FileTraceLoader",
 ]

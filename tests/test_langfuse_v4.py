@@ -297,7 +297,7 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_signals):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
-    import trace_ingest.loaders.langfuse as adapter
+    import trace_ingest.loaders.langfuse.loader as adapter
     from nooa.unifiedllm import FakeLLMClient
 
     import insight_agent.cli.main as cli

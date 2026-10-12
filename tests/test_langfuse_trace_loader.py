@@ -25,11 +25,11 @@ from insight_agent.compass_signals.tool_issues.signal import (
 )
 from insight_agent.config import LangfuseConfig
 from insight_agent.trace_loaders.langfuse import (
-    LangfuseFileTraceConfig,
-    LangfuseFileTraceLoader,
     LangfuseTraceConfig,
     LangfuseTraceLoader,
     LangfuseTraceLoadError,
+    LangfuseV3FileTraceConfig,
+    LangfuseV3FileTraceLoader,
 )
 from insight_agent.traces import UNSET, SpanKind
 
@@ -55,7 +55,7 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelop
     exported = {"status": 200, "headers": {}, "body": record} if envelope else record
     export_path = tmp_path / "trace.json"
     export_path.write_text(json.dumps(exported))
-    loader = LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path))
+    loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path))
     offline = list(loader.load())
     config = LangfuseTraceConfig(START, END, base_url="https://langfuse.test")
     client = FakeClient([([native], 1)], {native.id: native})
@@ -97,7 +97,7 @@ def test_export_directory_limits_and_ordering(tmp_path):
     (tmp_path / "a.jsonl").write_text(
         "\n".join(provider_trace(id, timestamp=END).json(by_alias=True) for id in ("z", "a"))
     )
-    loader = LangfuseFileTraceLoader(LangfuseFileTraceConfig(tmp_path, max_traces=2))
+    loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(tmp_path, max_traces=2))
     assert [t.id for t in loader.load()] == ["a", "z"]
     assert loader.describe()["truncated"] is True
     assert loader.describe()["export_trace_count"] == 3
@@ -142,7 +142,7 @@ def test_export_rejects_invalid_records_before_limit(tmp_path, case, match):
         provider_trace(newest_id, timestamp=END).json(by_alias=True) + "\n" + json.dumps(record)
     )
     with pytest.raises(LangfuseTraceLoadError, match=match):
-        LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path, max_traces=1)).load()
+        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path, max_traces=1)).load()
 
 
 @pytest.mark.parametrize(
@@ -153,14 +153,14 @@ def test_export_rejects_bad_files(tmp_path, filename, contents):
     export_path = tmp_path / filename
     export_path.write_bytes(contents)
     with pytest.raises(LangfuseTraceLoadError):
-        LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path)).load()
+        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path)).load()
 
 
 def test_export_empty_directory_and_invalid_limit(tmp_path):
     with pytest.raises(LangfuseTraceLoadError, match="no JSON"):
-        LangfuseFileTraceLoader(LangfuseFileTraceConfig(tmp_path)).load()
+        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(tmp_path)).load()
     with pytest.raises(ValueError, match="at least 1"):
-        LangfuseFileTraceConfig(Path("unused"), max_traces=0)
+        LangfuseV3FileTraceConfig(Path("unused"), max_traces=0)
 
 
 def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch, select_signals):
@@ -234,7 +234,7 @@ def test_corpus_reports_count_only_selected_traces(tmp_path, offline):
     if offline:
         export_path = tmp_path / "traces.jsonl"
         export_path.write_text("\n".join(t.json(by_alias=True) for t in (newest, oldest, middle)))
-        loader = LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path, max_traces=2))
+        loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path, max_traces=2))
     else:
         loader = LangfuseTraceLoader(
             LangfuseTraceConfig(
@@ -307,7 +307,7 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
     if offline:
         export_path = tmp_path / "trace.json"
         export_path.write_text(native.json())
-        loader = LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path))
+        loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path))
     else:
         loader = LangfuseTraceLoader(
             LangfuseTraceConfig(START, END, base_url="https://example.test"),
@@ -732,7 +732,7 @@ def test_export_argument_analysis_distinguishes_missing_input(
     )
     export_path = tmp_path / "trace.json"
     export_path.write_text(native.json(by_alias=True))
-    trace = next(iter(LangfuseFileTraceLoader(LangfuseFileTraceConfig(export_path)).load()))
+    trace = next(iter(LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path)).load()))
     call = to_tool_issue_trace(trace)
 
     if input_value is None:
