@@ -136,8 +136,8 @@ langfuse --env .env --api-version 3 api traces list \
   --to-timestamp 2026-09-02T00:00:00Z \
   --all --json |
 jq -r 'if .body.meta.truncated then error("Trace list truncated; increase --max-items") else .body.data[].id end' |
-while IFS= read -r trace_id; do
-  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
+while IFS= read -r trace; do
+  langfuse --env .env --api-version 3 api traces get "$trace" --json |
     jq -c '.body'
 done > langfuse-v3.jsonl
 ```
