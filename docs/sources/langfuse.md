@@ -114,8 +114,10 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-These examples work from any directory with the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-installed (`npm install --global @langfuse/cli@1.2.4`). The v3 example also uses `jq`.
+These examples work from any directory. The v3 example uses
+[uv](https://docs.astral.sh/uv/) to run the Python SDK and load your environment file.
+The v4 example assumes the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
+is installed (`npm install --global @langfuse/cli@1.2.4`).
 
 Create a `.env` file in that directory:
 
@@ -131,26 +133,34 @@ If you have a checkout, your coding agent can also use the optional
 
 ### Langfuse v3
 
-List the matching trace IDs, then fetch their full details including observations
-and scores. The `jq` check stops the export if the trace list hits the CLI's limit.
+Fetch matching traces page by page, then write each trace's full details, including
+observations and scores, as one JSONL line:
 
 ```bash
-set -euo pipefail
+uv run --env-file .env --with 'langfuse>=4.17,<5' python - <<'PY'
+from datetime import datetime
+from itertools import count
+from langfuse import Langfuse
 
-langfuse --env .env --api-version 3 api traces list \
-  --from-timestamp 2026-09-01T00:00:00Z \
-  --to-timestamp 2026-09-02T00:00:00Z \
-  --all --json |
-jq -r 'if .body.meta.truncated then error("Trace list truncated; increase --max-items") else .body.data[].id end' |
-while IFS= read -r trace_id; do
-  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
-    jq -c '.body'
-done > langfuse-v3.jsonl
+client = Langfuse(tracing_enabled=False)
+with open("langfuse-v3.jsonl", "w") as output:
+    for page in count(1):
+        traces = client.api.trace.list(
+            page=page, limit=100,
+            from_timestamp=datetime.fromisoformat("2026-09-01T00:00:00Z"),
+            to_timestamp=datetime.fromisoformat("2026-09-02T00:00:00Z"),
+        )
+        for trace in traces.data:
+            detail = client.api.trace.get(trace.id)
+            output.write(detail.json(exclude_unset=True) + "\n")
+        if page >= traces.meta.total_pages:
+            break
+PY
 ```
 
-Choose an unused output filename; shell redirection overwrites existing files.
-If the export fails, discard the incomplete file before retrying. Each JSONL line
-contains one full trace-detail record extracted from the CLI response.
+Choose an unused output filename; opening in `w` mode overwrites existing files.
+If the export fails, discard the incomplete file before retrying.
+`exclude_unset=True` preserves the distinction between omitted fields and explicit nulls.
 
 ### Langfuse v4
 
