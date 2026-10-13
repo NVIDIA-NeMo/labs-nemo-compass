@@ -66,11 +66,9 @@ def validate_langfuse_time_window(from_timestamp: datetime, to_timestamp: dateti
 
 
 class LangfuseV3FileTraceDescription(_LangfuseCorpusDescription):
-    """Run metadata for native CLI exports."""
+    """Run metadata for a local native trace-detail export."""
 
-    traces_path: str
-    observations_path: str
-    scores_path: str
+    export_path: str
     export_trace_count: int
     max_traces: int
     truncated: bool
@@ -78,16 +76,13 @@ class LangfuseV3FileTraceDescription(_LangfuseCorpusDescription):
 
 @dataclass(frozen=True)
 class LangfuseV3FileTraceConfig:
-    """Three complete native CLI response files."""
+    """A JSONL file containing one API trace-detail record per line."""
 
-    traces_path: Path
-    observations_path: Path
-    scores_path: Path
+    path: Path
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES
 
     def __post_init__(self) -> None:
-        for name in ("traces_path", "observations_path", "scores_path"):
-            object.__setattr__(self, name, Path(getattr(self, name)))
+        object.__setattr__(self, "path", Path(self.path))
         if self.max_traces < 1:
             raise ValueError("max_traces must be at least 1")
 

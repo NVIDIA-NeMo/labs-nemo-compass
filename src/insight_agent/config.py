@@ -80,23 +80,31 @@ class MLflowExportConfig(ConfigModel):
 
 
 class LangfuseTraceExportFileConfig(ConfigModel):
-    """Native CLI exports for offline Langfuse analysis."""
+    """Settings for the documented Langfuse v3/v4 export files."""
 
     api_version: Literal["v3", "v4"]
-    observations_path: Path
-    scores_path: Path
-    traces_path: Path | None = None
+    path: Path | None = None
+    observations_path: Path | None = None
+    scores_path: Path | None = None
     base_url: str | None = None
 
     @model_validator(mode="after")
     def validate_version_options(self) -> LangfuseTraceExportFileConfig:
         if self.api_version == "v3":
-            if self.traces_path is None:
-                raise ValueError("v3 exports require traces_path")
-            if self.base_url is not None:
-                raise ValueError("base_url requires api_version=v4")
-        elif self.traces_path is not None:
-            raise ValueError("traces_path requires api_version=v3")
+            if self.path is None:
+                raise ValueError("v3 exports require path")
+            if any(
+                value is not None
+                for value in (self.observations_path, self.scores_path, self.base_url)
+            ):
+                raise ValueError(
+                    "observations_path, scores_path, and base_url require api_version=v4"
+                )
+        else:
+            if self.observations_path is None or self.scores_path is None:
+                raise ValueError("v4 exports require observations_path and scores_path")
+            if self.path is not None:
+                raise ValueError("v4 exports use observations_path and scores_path instead of path")
         return self
 
 

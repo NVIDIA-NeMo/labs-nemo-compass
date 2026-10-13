@@ -15,12 +15,9 @@ Compass installed with the `langfuse` extra.
 
 - Choose the deployment's server version, not the installed SDK or CLI version.
   Project API keys select the project. Keep credentials out of output and reports.
-- V3 uses three installed-CLI list commands with `--api-version 3 --all --json`:
-  `traces`, `observations`, and `scores-v2`. Preserve their native envelopes.
-  Filter traces to the requested window; observation exports must contain every
-  ID referenced by those traces. Export observations unbounded, or use a wider
-  window that still includes every referenced step. Scores remain unbounded
-  to include later evaluations.
+- V3 uses the CLI and `jq`: list matching trace IDs, reject truncated selection,
+  fetch each full trace, and write its response body as one JSONL line. Keep
+  omitted fields and explicit nulls unchanged.
 - V4 uses two installed-CLI commands: observations and scores, both with
   `--all --json`. Keep their native response envelopes unchanged. Scores are
   project-wide so later evaluations remain available; Compass attaches relevant
@@ -36,7 +33,7 @@ Compass installed with the `langfuse` extra.
   counts, missing-parent diagnostics, and skipped scores. No inference is needed.
 
 Provide a `trace.langfuse_trace_export_file` config with explicit `api_version`.
-Both versions require `observations_path` and `scores_path`; v3 also requires
-`traces_path`. V4 optionally accepts `base_url` for platform links. An empty score
-response is valid, but its file is still required. Do not substitute UI exports,
-directories, trace-detail JSONL, or custom SDK bundles for the native CLI responses.
+V3 takes `path`; v4 requires `observations_path` and `scores_path` and optionally
+`base_url` for platform links. An empty v4 score response is valid, but its file
+is still required. Do not substitute UI exports, directories, or custom v4 SDK
+bundles for the documented formats.

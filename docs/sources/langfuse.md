@@ -109,7 +109,7 @@ Missing or conflicting catalogs limit those checks.
 ## Use an export
 
 These examples work from any directory with the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-installed (`npm install --global @langfuse/cli@1.2.4`).
+installed (`npm install --global @langfuse/cli@1.2.4`). The v3 example also uses `jq`.
 
 Create a `.env` file in that directory:
 
@@ -125,32 +125,26 @@ If you have a checkout, your coding agent can also use the optional
 
 ### Langfuse v3
 
-Export matching traces, the project's observations, and its scores as three files:
+List the matching trace IDs, then fetch their full details including observations
+and scores. The `jq` check stops the export if the trace list hits the CLI's limit.
 
 ```bash
+set -euo pipefail
+
 langfuse --env .env --api-version 3 api traces list \
   --from-timestamp 2026-09-01T00:00:00Z \
   --to-timestamp 2026-09-02T00:00:00Z \
-  --all --json > traces.json
-
-langfuse --env .env --api-version 3 api observations list \
-  --all --json > observations.json
-
-langfuse --env .env --api-version 3 api scores-v2 list \
-  --all --json > scores.json
+  --all --json |
+jq -r 'if .body.meta.truncated then error("Trace list truncated; increase --max-items") else .body.data[].id end' |
+while IFS= read -r trace_id; do
+  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
+    jq -c '.body'
+done > langfuse-v3.jsonl
 ```
 
-Choose unused output filenames; shell redirection overwrites existing files.
-Keep all three CLI responses unchanged. Compass joins the observations referenced
-by each trace and rejects exports missing any of those observations. The observation
-export is intentionally not time-filtered: steps may fall outside the trace-selection
-window. You can bound it separately with a wider window if needed, but it must
-include every referenced observation. Scores are also unbounded to include later
-evaluations. Use `scores-v2` for v3 servers, rather than v4's `scores` command.
-
-Compass rejects failed, incomplete, or truncated responses. `--all` defaults to
-1,000 items and stops after at most 100 requests; increase `--max-items` and
-`--limit` or narrow the query when an export is truncated.
+Choose an unused output filename; shell redirection overwrites existing files.
+If the export fails, discard the incomplete file before retrying. Each JSONL line
+contains one full trace-detail record extracted from the CLI response.
 
 ### Langfuse v4
 
@@ -188,9 +182,7 @@ trace:
   max_traces: 100
   langfuse_trace_export_file:
     api_version: v3
-    traces_path: traces.json
-    observations_path: observations.json
-    scores_path: scores.json
+    path: langfuse-v3.jsonl
 ```
 
 For v4, provide both CLI output files:
@@ -210,6 +202,6 @@ Run `insight-agent --config config.yaml` from the directory containing your conf
 and exports. Compass must be installed with the `langfuse` extra, including for
 offline loading. Analysis still needs your [inference credentials](../model-access.md#choose-a-model).
 
-Only these native CLI JSON responses are supported, not UI exports or directories.
-A score response with no scores is valid for either version, but its file is still
-required.
+Only the documented v3 trace-detail JSONL and v4 CLI JSON responses are supported, not UI
+exports or directories. A v4 score response with no scores is valid, but the file
+is still required.
