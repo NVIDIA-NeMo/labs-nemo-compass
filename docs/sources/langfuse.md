@@ -3,123 +3,19 @@
 
 # Analyze Langfuse traces
 
-Choose a time window containing the conversations you want to understand.
-Recorded scores, including scores attached to observations, are included automatically.
+Compass supports Langfuse v3 and v4, automatically detecting the version for live
+connections. Trace and observation scores are included automatically.
 
-The live adapter supports Langfuse v3 and v4 (including Langfuse Cloud).
-It reads the server version from `GET /api/public/health` and automatically uses
-the v3 trace API for server releases 3.x or the observations-based path for 4.x.
+## Setup
 
-## Connect and run
-
-Install Compass with the `langfuse` extra. Once the PyPI release is available:
+Install with the `langfuse` extra, then [configure your inference model and key](../model-access.md#choose-a-model).
+Until the PyPI release is available, install with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-python -m pip install 'insight-agent[langfuse]'
+uv tool install 'insight-agent[langfuse] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
-Until then, install directly from GitHub with [uv and Git](../../README.md#start-here).
-This does not require a local checkout:
-
-```bash
-uv tool install \
-  'insight-agent[langfuse] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
-```
-
-[Configure your inference model and key](../model-access.md#choose-a-model).
-Add your project’s Langfuse keys to `.env`:
-
-```dotenv
-LANGFUSE_PUBLIC_KEY=your-public-key
-LANGFUSE_SECRET_KEY=your-secret-key
-```
-
-Save this as `config.yaml`. Replace the URL and dates with your deployment and trace window:
-
-```yaml
-max_tokens: 16384
-trace:
-  max_traces: 100
-  langfuse:
-    base_url: https://langfuse.example.com
-    from_timestamp: 2026-09-01T00:00:00Z
-    to_timestamp: 2026-09-02T00:00:00Z
-```
-
-```bash
-insight-agent --config config.yaml
-```
-
-Open `insights.yml` if the run produced insights. [Read your results](../results.md)
-for help with findings or skipped Compass Signals.
-
-## Select the right traces
-
-Your API keys select the project. Both timestamps are required and must include a timezone;
-the start is inclusive and the end is exclusive. The default limit is 100 distinct traces.
-`base_url` overrides `LANGFUSE_BASE_URL` in the environment.
-
-To filter by environment, add this under `trace.langfuse`:
-
-```yaml
-filter: '[{"type":"string","column":"environment","operator":"=","value":"production"}]'
-```
-
-### How selection differs between v3 and v4
-
-- **v3:** The window and filters select trace records, newest trace timestamp first.
-- **v4:** The window and filters select observations (individual steps), newest observation
-  start time first. Compass takes distinct trace IDs, then loads all observations for
-  each selected trace within that same time window, without reapplying the selection
-  filter. Both selection and detail reads include time bounds to avoid expensive
-  all-history queries on Langfuse v4.
-
-The v4 online loader fetches observations for up to four traces concurrently and
-fetches scores in batches of up to 100 trace IDs. Each query still paginates as
-needed. These limits are automatic; no additional configuration is required.
-Online and offline v4 loaders share observation grouping, score association, and
-trace normalization.
-
-V4 traces can be partial at the window boundaries: steps starting before the start
-or at/after the end are excluded, even if they belong to a selected trace. Choose a
-window covering the entire execution when you need all its steps. Each loaded v4
-trace records this scope in `attributes.observation_window`; reported costs and
-latency describe the loaded steps. Missing parents are reported, but a missing child
-or sibling cannot always be detected. Narrowing the window reduces query work but
-also reduces the evidence available to Compass.
-
-Write `filter` for the Langfuse version you are connecting to. You are responsible
-for using that version's query syntax and filter semantics:
-
-- **Langfuse v3:** [Traces API filters](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces).
-- **Langfuse v4:** [Observations API v2 filters](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations).
-
-Compass checks that the filter is a JSON array of objects, but leaves column,
-operator, and value validation to Langfuse. It does not translate filters between
-versions. For example, `name` selects trace names on v3 and observation names on
-v4; use `traceName` for trace names on v4.
-
-V4 no longer has separate trace-level inputs and outputs. Compass uses the sole physical
-root observation for those values and preserves each step's inputs, outputs, and context.
-Costs and latency are computed from the loaded observations. Trace and observation scores
-are fetched separately, including scores recorded after the selection window, and retain
-their typed values and subject associations. Missing parents are reported in the source
-summary; Compass cannot recover observations that were never recorded or were deleted.
-
-V4 observation metadata may be truncated by Langfuse. Older instrumentation can also take
-up to 15 minutes to appear in v4 queries; see [Langfuse compatibility](https://langfuse.com/docs/compatibility).
-
-For tool-schema checks, record tool definitions in `input.tools` on generation observations.
-Missing or conflicting catalogs limit those checks.
-
-## Use an export
-
-These examples work from any directory. The v3 example uses
-[uv](https://docs.astral.sh/uv/) to run the Python SDK and load your environment file.
-The v4 example assumes the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-is installed (`npm install --global @langfuse/cli@1.2.4`).
-
-Create a `.env` file in that directory:
+Put your deployment URL and project API keys in `.env`:
 
 ```dotenv
 LANGFUSE_BASE_URL=https://langfuse.example.com
@@ -127,14 +23,54 @@ LANGFUSE_PUBLIC_KEY=your-public-key
 LANGFUSE_SECRET_KEY=your-secret-key
 ```
 
-Choose the example for your server version and adjust its dates and output filename.
-If you have a checkout, your coding agent can also use the optional
-[export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
+## Analyze live traces
+
+Save as `config.yaml`, adjusting the dates and optional filter:
+
+```yaml
+trace:
+  max_traces: 100
+  langfuse:
+    from_timestamp: 2026-09-01T00:00:00Z
+    to_timestamp: 2026-09-02T00:00:00Z
+    filter: '[{"type":"string","column":"environment","operator":"=","value":"production"}]'
+```
+
+```bash
+insight-agent --config config.yaml
+```
+
+Results are written to `insights.yml` when insights are found. See [reading results](../results.md).
+Paths resolve from your working directory. API keys select the project; optional
+`trace.langfuse.base_url` overrides the environment URL. The default limit is 100 traces.
+
+Both timestamps are required, with a timezone: start inclusive, end exclusive.
+Selection differs by version:
+
+- **V3:** filters select traces; Compass fetches their full details.
+- **V4:** filters select observations; Compass fetches the other steps in each matching
+  trace **within the same window**. Steps outside it are excluded, and costs and latency
+  reflect only loaded steps. Widen the window when you need the whole execution.
+
+Use your version's [v3 trace](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces)
+or [v4 observation](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations)
+filter syntax. For example, `name` means trace name in v3 and step name in v4;
+use `traceName` for v4 trace names. V4 automatically fetches up to four traces
+concurrently and batches score requests; no tuning is needed.
+
+For tool-schema checks, record definitions in `input.tools` on generation observations.
+See [Langfuse compatibility](https://langfuse.com/docs/compatibility) for v4 data-availability delays.
+
+## Use an export
+
+These examples need no repository checkout. Use the `.env` above, adjust dates,
+and choose unused output filenames. Discard incomplete files if an export fails.
+Only these formats are supported, not UI exports. Coding agents with a checkout
+can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
 
 ### Langfuse v3
 
-Fetch matching traces page by page, then write each trace's full details, including
-observations and scores, as one JSONL line:
+Use uv and the Python SDK to export full traces, including observations and scores:
 
 ```bash
 uv run --env-file .env --with 'langfuse>=4.17,<5' python - <<'PY'
@@ -158,15 +94,19 @@ with open("langfuse-v3.jsonl", "w") as output:
 PY
 ```
 
-Choose an unused output filename; opening in `w` mode overwrites existing files.
-If the export fails, discard the incomplete file before retrying.
-`exclude_unset=True` preserves the distinction between omitted fields and explicit nulls.
+Replace your config's `trace` section with:
+
+```yaml
+trace:
+  langfuse_trace_export_file:
+    api_version: v3
+    path: langfuse-v3.jsonl
+```
 
 ### Langfuse v4
 
-Export observations in your chosen window, then the project's scores. Scores are
-not time-filtered, so later evaluations are included. Run these in a new directory
-or choose unused output filenames; shell redirection overwrites existing files.
+With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
+installed, export observations and project scores (including later evaluations):
 
 ```bash
 langfuse --env .env --api-version 4 api observations list \
@@ -179,33 +119,14 @@ langfuse --env .env --api-version 4 api scores list \
   --fields details,subject,annotation --all --json > scores.json
 ```
 
-Keep both CLI responses unchanged. Compass checks completion and rejects failed,
-incomplete, or truncated responses. `--all` defaults to 1,000 items and stops
-after at most 100 requests; increase `--max-items` and `--limit` or narrow the
-query if an export is truncated. Compass attaches scores to the exported traces
-and reports how many unrelated or ambiguous scores it skips.
+Keep both responses unchanged. Compass rejects truncated exports: `--all` defaults
+to 1,000 items and at most 100 requests. Increase `--max-items` / `--limit` or narrow
+the query if needed. Observation filters and dates can omit other steps in a trace.
 
-V4 filters select individual observations, not complete traces. Filtering by step
-name or type can omit other steps, and the time window can cut across executions.
-Choose a window and filters covering the evidence you want analyzed.
-
-### Analyze the export
-
-For v3, replace your config's `trace` section with:
+Replace your config's `trace` section with:
 
 ```yaml
 trace:
-  max_traces: 100
-  langfuse_trace_export_file:
-    api_version: v3
-    path: langfuse-v3.jsonl
-```
-
-For v4, provide both CLI output files:
-
-```yaml
-trace:
-  max_traces: 100
   langfuse_trace_export_file:
     api_version: v4
     observations_path: observations.json
@@ -213,11 +134,8 @@ trace:
     base_url: https://langfuse.example.com
 ```
 
-V4's `base_url` is optional and enables links back to Langfuse.
-Run `insight-agent --config config.yaml` from the directory containing your config
-and exports. Compass must be installed with the `langfuse` extra, including for
-offline loading. Analysis still needs your [inference credentials](../model-access.md#choose-a-model).
+Both files are required, even with no scores. `base_url` is optional and enables
+Langfuse links. Online and offline loaders share trace normalization and score association.
 
-Only the documented v3 trace-detail JSONL and v4 CLI JSON responses are supported, not UI
-exports or directories. A v4 score response with no scores is valid, but the file
-is still required.
+Run `insight-agent --config config.yaml` as above. Offline analysis still needs
+inference credentials; `trace.max_traces` controls the number of traces analyzed.
