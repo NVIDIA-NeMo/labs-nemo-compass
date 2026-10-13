@@ -19,7 +19,7 @@ Compass installed with the `langfuse` extra.
   write `detail.json(exclude_unset=True)` as one JSONL line. Keep omitted fields
   and explicit nulls unchanged. The documented uv command loads the environment
   file and supplies the SDK without a repository checkout.
-- V4 uses two installed-CLI commands: observations and scores, both with
+- V4 uses installed-CLI commands for observations and optional scores, with
   `--all --json`. Keep their native response envelopes unchanged. Scores are
   project-wide so later evaluations remain available; Compass attaches relevant
   scores and reports skipped unrelated or ambiguous subjects.
@@ -34,7 +34,7 @@ Compass installed with the `langfuse` extra.
   counts, missing-parent diagnostics, and skipped scores. No inference is needed.
 
 Provide a `trace.langfuse_trace_export_file` config with explicit `api_version`.
-V3 takes `path`; v4 requires `observations_path` and `scores_path` and optionally
-`base_url` for platform links. An empty v4 score response is valid, but its file
-is still required. Do not substitute UI exports, directories, or custom v4 SDK
+V3 takes `path`; v4 requires `observations_path`, with optional
+`scores_path` for evaluation evidence and `base_url` for platform links. Omit
+`scores_path` when no scores are supplied; an empty score response is also valid. Do not substitute UI exports, directories, or custom v4 SDK
 bundles for the documented formats.

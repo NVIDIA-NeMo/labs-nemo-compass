@@ -193,7 +193,6 @@ def test_v4_export_paths_can_be_configured_through_cli() -> None:
         {"api_version": "v3"},
         {"api_version": "v3", "path": "traces.jsonl", "base_url": "https://langfuse.test"},
         {"api_version": "v3", "path": "traces.jsonl", "scores_path": "scores.json"},
-        {"api_version": "v4", "observations_path": "observations.json"},
         {"api_version": "v4", "scores_path": "scores.json"},
         {
             "api_version": "v4",
@@ -208,3 +207,16 @@ def test_export_paths_must_match_selected_version(settings) -> None:
 
     with pytest.raises(ValidationError):
         LangfuseTraceExportFileConfig.model_validate(settings)
+
+
+def test_v4_export_can_omit_scores_file():
+    config = RunConfig(
+        _cli_parse_args=[
+            "--trace.langfuse-trace-export-file.api-version",
+            "v4",
+            "--trace.langfuse-trace-export-file.observations-path",
+            "observations.json",
+        ]
+    )
+    assert config.trace.langfuse_trace_export_file is not None
+    assert config.trace.langfuse_trace_export_file.scores_path is None

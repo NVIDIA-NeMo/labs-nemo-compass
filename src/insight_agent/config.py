@@ -101,10 +101,10 @@ class LangfuseTraceExportFileConfig(ConfigModel):
                     "observations_path, scores_path, and base_url require api_version=v4"
                 )
         else:
-            if self.observations_path is None or self.scores_path is None:
-                raise ValueError("v4 exports require observations_path and scores_path")
+            if self.observations_path is None:
+                raise ValueError("v4 exports require observations_path")
             if self.path is not None:
-                raise ValueError("v4 exports use observations_path and scores_path instead of path")
+                raise ValueError("v4 exports use observations_path instead of path")
         return self
 
 

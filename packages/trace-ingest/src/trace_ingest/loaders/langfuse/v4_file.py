@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Load two complete Langfuse CLI responses: observations and scores."""
+"""Load a Langfuse CLI observation response and optional score response."""
 
 from __future__ import annotations
 
@@ -57,13 +57,14 @@ class LangfuseV4FileTraceConfig:
     """Observation and score CLI response files, with optional platform links."""
 
     observations_path: Path
-    scores_path: Path
+    scores_path: Path | None = None
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES
     base_url: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "observations_path", Path(self.observations_path))
-        object.__setattr__(self, "scores_path", Path(self.scores_path))
+        if self.scores_path is not None:
+            object.__setattr__(self, "scores_path", Path(self.scores_path))
         if self.max_traces < 1:
             raise ValueError("max_traces must be at least 1")
 
@@ -72,7 +73,7 @@ class LangfuseV4FileTraceDescription(_LangfuseCorpusDescription):
     """Offline v4 corpus and score coverage."""
 
     observations_path: str
-    scores_path: str
+    scores_path: str | None
     export_trace_count: int
     max_traces: int
     truncated: bool
@@ -100,7 +101,11 @@ class LangfuseV4FileTraceLoader:
             observations = parse_obj_as(
                 list[ObservationV2], _read_cli_data(self.config.observations_path)
             )
-            scores = parse_obj_as(list[ScoreV3], _read_cli_data(self.config.scores_path))
+            scores = (
+                parse_obj_as(list[ScoreV3], _read_cli_data(self.config.scores_path))
+                if self.config.scores_path is not None
+                else []
+            )
         except ValueError as error:
             raise LangfuseTraceLoadError(f"Invalid Langfuse export records: {error}") from error
         groups = _group_observations(observations)
@@ -125,7 +130,9 @@ class LangfuseV4FileTraceLoader:
                 f"langfuse-v4-export:{self.config.observations_path.resolve()}", self._snapshot
             ),
             "observations_path": str(self.config.observations_path.resolve()),
-            "scores_path": str(self.config.scores_path.resolve()),
+            "scores_path": str(self.config.scores_path.resolve())
+            if self.config.scores_path is not None
+            else None,
             "export_trace_count": self._export_trace_count,
             "max_traces": self.config.max_traces,
             "truncated": self._export_trace_count > self._snapshot.trace_count,

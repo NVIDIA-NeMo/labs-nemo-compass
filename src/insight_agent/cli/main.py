@@ -175,7 +175,7 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
     if config.langfuse_trace_export_file is not None:
         source = config.langfuse_trace_export_file
         if source.api_version == "v4":
-            assert source.observations_path is not None and source.scores_path is not None
+            assert source.observations_path is not None
             return LangfuseV4FileTraceLoader(
                 LangfuseV4FileTraceConfig(
                     observations_path=source.observations_path,

@@ -4,7 +4,9 @@
 # Analyze Langfuse traces
 
 Compass supports Langfuse v3 and v4, automatically detecting the version for live
-connections. Trace and observation scores are included automatically.
+connections. Online loaders include available trace and observation scores; none are required.
+Scores support `grader_failure_patterns`, which skips with "No evaluator results"
+when none are available. Other analyses can still run.
 
 Langfuse v4 moved from a trace-centric to an observation-centric model: its
 [Observations API](https://langfuse.com/docs/api-and-data-platform/features/public-api#observations-api-v2)
@@ -120,11 +122,12 @@ langfuse --env .env --api-version 4 api observations list \
   --fields core,basic,io,metadata,model,usage,prompt,trace_context \
   --all --json > observations.json
 
+# Optional: export scores for evaluation evidence
 langfuse --env .env --api-version 4 api scores list \
   --fields details,subject,annotation --all --json > scores.json
 ```
 
-Keep both responses unchanged. Compass rejects truncated exports: `--all` defaults
+Keep exported responses unchanged. Compass rejects truncated exports: `--all` defaults
 to 1,000 items and at most 100 requests. Increase `--max-items` / `--limit` or narrow
 the query if needed. Observation filters and dates can exclude observations
 belonging to the same trace.
@@ -136,11 +139,11 @@ trace:
   langfuse_trace_export_file:
     api_version: v4
     observations_path: observations.json
-    scores_path: scores.json
+    scores_path: scores.json  # Optional
     base_url: https://langfuse.example.com
 ```
 
-Both files are required, even with no scores. `base_url` is optional and enables
+Omit `scores_path` if you have no scores to supply. `base_url` is optional and enables
 Langfuse links. Online and offline loaders share trace normalization and score association.
 
 Run `insight-agent --config config.yaml` as above. Offline analysis still needs

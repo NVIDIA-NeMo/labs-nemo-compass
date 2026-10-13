@@ -812,3 +812,40 @@ def test_v4_concurrent_detail_failure_does_not_return_partial_snapshot():
 
     with pytest.raises(ApiError):
         loader(handler).load()
+
+
+def test_v4_without_score_file_skips_requested_evaluation(tmp_path, select_signals):
+    import asyncio
+
+    from nooa.unifiedllm import FakeLLMClient
+    from trace_ingest.loaders.langfuse import LangfuseV4FileTraceLoader
+
+    from insight_agent.cli.main import _run_compass_signals
+    from insight_agent.config import CompassSignalsConfig
+
+    observations = tmp_path / "observations.json"
+    observations.write_text(json.dumps(cli_export([observation("root")])))
+    instance = _configured_trace_loader(
+        TraceConfig.model_validate(
+            {"langfuse_trace_export_file": {"api_version": "v4", "observations_path": observations}}
+        )
+    )
+    assert isinstance(instance, LangfuseV4FileTraceLoader)
+    snapshot = instance.load()
+    assert snapshot.trace_count == 1
+    assert next(iter(snapshot)).evaluator_results == {}
+    assert instance.describe()["scores_path"] is None
+    assert instance.describe()["ignored_score_count"] == 0
+    llm = FakeLLMClient()
+    signals = CompassSignalsConfig.model_validate(select_signals(grader_failure_patterns={}))
+    results = asyncio.run(_run_compass_signals(signals, snapshot, lambda: llm))
+    assert results[0].signal_name == "grader-failure-patterns"
+    assert results[0].skip_reason == "No evaluator results"
+    assert llm.call_count == 0
+
+
+def test_v4_supplied_missing_score_file_is_an_error(tmp_path):
+    instance = file_loader(tmp_path, [observation("root")])
+    instance.config.scores_path.unlink()
+    with pytest.raises(LangfuseTraceLoadError, match="scores.json"):
+        instance.load()
