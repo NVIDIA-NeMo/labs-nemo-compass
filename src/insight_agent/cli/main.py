@@ -172,18 +172,22 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
                 max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
             )
         )
-    if config.langfuse_export is not None:
-        if config.langfuse_export.api_version == "v4":
+    if config.langfuse_trace_export_file is not None:
+        source = config.langfuse_trace_export_file
+        if source.api_version == "v4":
+            assert source.observations_path is not None and source.scores_path is not None
             return LangfuseV4FileTraceLoader(
                 LangfuseV4FileTraceConfig(
-                    path=config.langfuse_export.path,
-                    base_url=config.langfuse_export.base_url,
+                    observations_path=source.observations_path,
+                    scores_path=source.scores_path,
+                    base_url=source.base_url,
                     max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
                 )
             )
+        assert source.path is not None
         return LangfuseV3FileTraceLoader(
             LangfuseV3FileTraceConfig(
-                path=config.langfuse_export.path,
+                path=source.path,
                 max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
             )
         )

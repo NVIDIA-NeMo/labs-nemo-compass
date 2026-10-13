@@ -191,9 +191,9 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
     assert (
         cli.main(
             [
-                "--trace.langfuse-export.api-version",
+                "--trace.langfuse-trace-export-file.api-version",
                 "v3",
-                "--trace.langfuse-export.path",
+                "--trace.langfuse-trace-export-file.path",
                 str(export_path),
                 "--compass-signals",
                 json.dumps(
@@ -340,7 +340,7 @@ def test_export_config_is_exclusive():
     with pytest.raises(ValidationError, match="exactly one loader"):
         TraceConfig.model_validate(
             {
-                "langfuse_export": {"path": "a.jsonl", "api_version": "v3"},
+                "langfuse_trace_export_file": {"path": "a.jsonl", "api_version": "v3"},
                 "filesystem": {"path": "b.jsonl"},
             }
         )

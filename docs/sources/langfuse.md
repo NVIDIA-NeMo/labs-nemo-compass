@@ -108,9 +108,10 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-Run these examples from any working directory with [uv installed](https://docs.astral.sh/uv/getting-started/installation/).
-Each command supplies Langfuse SDK 4.17.0 independently of your Compass installation;
-no repository checkout is needed. The SDK supports both server versions.
+These examples work from any directory without a repository checkout. V3 uses
+[uv](https://docs.astral.sh/uv/getting-started/installation/) to supply Langfuse SDK
+4.17.0. V4 uses the installed [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli),
+available with `npm install --global @langfuse/cli@1.2.4`.
 
 Create a `.env` file in that directory:
 
@@ -150,86 +151,66 @@ with open("langfuse-v3.jsonl", "x", encoding="utf-8") as output:
 PYTHON
 ```
 
+The v3 export refuses to overwrite an existing file. If it fails, discard the
+incomplete file before retrying. Each line is a full SDK trace-detail record;
+keep `exclude_unset=True` when serializing to preserve omitted fields.
+
 ### Langfuse v4
 
-Group the observations in the window by trace and fetch each trace's scores.
-Scores are not time-filtered, so later evaluations are included.
+Export observations in your chosen window, then the project's scores. Scores are
+not time-filtered, so later evaluations are included. Run these in a new directory
+or choose unused output filenames; shell redirection overwrites existing files.
 
 ```bash
-uv run --no-project --with langfuse==4.17.0 --env-file .env python - <<'PYTHON'
-import json
-from collections import defaultdict
-from datetime import datetime
-from langfuse import Langfuse
+langfuse --env .env --api-version 4 api observations list \
+  --from-start-time 2026-09-01T00:00:00Z \
+  --to-start-time 2026-09-02T00:00:00Z \
+  --fields core,basic,io,metadata,model,usage,prompt,trace_context \
+  --all --json > observations.json
 
-client = Langfuse(tracing_enabled=False)
-start = datetime.fromisoformat("2026-09-01T00:00:00+00:00")
-end = datetime.fromisoformat("2026-09-02T00:00:00+00:00")
-
-def records(fetch, **kwargs):
-    cursor = None
-    while True:
-        result = fetch(limit=100, cursor=cursor, **kwargs)
-        yield from result.data
-        cursor = result.meta.cursor
-        if not cursor:
-            break
-
-def serialize(item):
-    return json.loads(item.json(exclude_unset=True))
-
-with open("langfuse-v4.jsonl", "x", encoding="utf-8") as output:
-    traces = defaultdict(list)
-    for observation in records(
-        client.api.observations.get_many,
-        from_start_time=start, to_start_time=end,
-        fields="core,basic,io,metadata,model,usage,prompt,trace_context",
-    ):
-        traces[observation.trace_id].append(serialize(observation))
-    for trace_id, observations in traces.items():
-        scores = records(
-            client.api.scores_v3.get_many_v3, trace_id=trace_id,
-            fields="details,subject,annotation",
-        )
-        output.write(json.dumps({
-            "trace_id": trace_id,
-            "observations": observations,
-            "scores": [serialize(score) for score in scores],
-        }) + "\n")
-PYTHON
+langfuse --env .env --api-version 4 api scores list \
+  --fields details,subject,annotation --all --json > scores.json
 ```
 
-You can add SDK filters to the listing calls. V3 filters select traces; v4 filters
-select individual observations and do not automatically include other steps of
-those traces. The v4 window can also cut across executions. Choose a window and
-filters covering the steps you want analyzed; absent steps cannot be recovered
-from an export.
+Keep both CLI responses unchanged. Compass checks completion and rejects failed,
+incomplete, or truncated responses. `--all` defaults to 1,000 items and stops
+after at most 100 requests; increase `--max-items` and `--limit` or narrow the
+query if an export is truncated. Compass attaches scores to the exported traces
+and reports how many unrelated or ambiguous scores it skips.
 
-Both examples refuse to overwrite an existing file. If an export fails, discard
-the incomplete file before retrying. They follow pagination to completion; v4
-holds the selected observations in memory while grouping them.
+V4 filters select individual observations, not complete traces. Filtering by step
+name or type can omit other steps, and the time window can cut across executions.
+Choose a window and filters covering the evidence you want analyzed.
 
-### Analyze the file
+### Analyze the export
 
-Replace your config's `trace` section, choosing the version and file you exported:
+For v3, replace your config's `trace` section with:
 
 ```yaml
 trace:
   max_traces: 100
-  langfuse_export:
+  langfuse_trace_export_file:
+    api_version: v3
+    path: langfuse-v3.jsonl
+```
+
+For v4, provide both CLI output files:
+
+```yaml
+trace:
+  max_traces: 100
+  langfuse_trace_export_file:
     api_version: v4
-    path: langfuse-v4.jsonl
+    observations_path: observations.json
+    scores_path: scores.json
     base_url: https://langfuse.example.com
 ```
 
-For v3, use `api_version: v3`, `path: langfuse-v3.jsonl`, and omit `base_url`.
-For v4, `base_url` is optional and enables links back to Langfuse.
+V4's `base_url` is optional and enables links back to Langfuse.
 Run `insight-agent --config config.yaml` from the directory containing your config
-and export. Compass must be installed with the `langfuse` extra, including for
+and exports. Compass must be installed with the `langfuse` extra, including for
 offline loading. Analysis still needs your [inference credentials](../model-access.md#choose-a-model).
 
-Each v3 line is a full SDK trace-detail record. Each v4 line contains `trace_id`,
-`observations`, and `scores` (an empty list is valid). Preserve
-`exclude_unset=True` when serializing to distinguish missing values from explicit
-nulls. Only these JSONL formats are supported, not CLI response envelopes, UI
-exports, directories, or separate score files.
+Only the documented v3 SDK JSONL and v4 CLI JSON responses are supported, not UI
+exports or directories. A v4 score response with no scores is valid, but the file
+is still required.

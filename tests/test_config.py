@@ -86,16 +86,16 @@ def test_yaml_accepts_code_base(tmp_path: Path) -> None:
     assert config.code_base == Path("../my-agent")
 
 
-def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:
+def test_langfuse_trace_export_file_yaml_with_cli_limit(tmp_path: Path) -> None:
     config_path = tmp_path / "analyst.yaml"
     config_path.write_text(
-        "trace:\n  langfuse_export:\n    api_version: v3\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
+        "trace:\n  langfuse_trace_export_file:\n    api_version: v3\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
         encoding="utf-8",
     )
     config = RunConfig(_cli_parse_args=["--config", str(config_path), "--trace.max-traces", "200"])
-    assert config.trace.langfuse_export is not None
-    assert config.trace.langfuse_export.path == Path("exports")
-    assert config.trace.langfuse_export.api_version == "v3"
+    assert config.trace.langfuse_trace_export_file is not None
+    assert config.trace.langfuse_trace_export_file.path == Path("exports")
+    assert config.trace.langfuse_trace_export_file.api_version == "v3"
     assert config.trace.max_traces == 200
 
 
@@ -151,16 +151,60 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
 
 
 @pytest.mark.parametrize("source", ["yaml", "cli"])
-def test_langfuse_export_requires_api_version(tmp_path: Path, source: str) -> None:
+def test_langfuse_trace_export_file_requires_api_version(tmp_path: Path, source: str) -> None:
     if source == "yaml":
         config_path = tmp_path / "config.yaml"
-        config_path.write_text("trace:\n  langfuse_export:\n    path: exports\n")
+        config_path.write_text("trace:\n  langfuse_trace_export_file:\n    path: exports\n")
         args = ["--config", str(config_path)]
     else:
-        args = ["--trace.langfuse-export.path", "exports"]
+        args = ["--trace.langfuse-trace-export-file.path", "exports"]
     with pytest.raises(ValidationError) as error:
         RunConfig(_cli_parse_args=args)
     assert any(
-        item["loc"] == ("trace", "langfuse_export", "api_version") and item["type"] == "missing"
+        item["loc"] == ("trace", "langfuse_trace_export_file", "api_version")
+        and item["type"] == "missing"
         for item in error.value.errors()
     )
+
+
+def test_v4_export_paths_can_be_configured_through_cli() -> None:
+    config = RunConfig(
+        _cli_parse_args=[
+            "--trace.langfuse-trace-export-file.api-version",
+            "v4",
+            "--trace.langfuse-trace-export-file.observations-path",
+            "observations.json",
+            "--trace.langfuse-trace-export-file.scores-path",
+            "scores.json",
+            "--trace.langfuse-trace-export-file.base-url",
+            "https://langfuse.test",
+        ]
+    )
+    source = config.trace.langfuse_trace_export_file
+    assert source is not None
+    assert source.observations_path == Path("observations.json")
+    assert source.scores_path == Path("scores.json")
+    assert source.base_url == "https://langfuse.test"
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"api_version": "v3"},
+        {"api_version": "v3", "path": "traces.jsonl", "base_url": "https://langfuse.test"},
+        {"api_version": "v3", "path": "traces.jsonl", "scores_path": "scores.json"},
+        {"api_version": "v4", "observations_path": "observations.json"},
+        {"api_version": "v4", "scores_path": "scores.json"},
+        {
+            "api_version": "v4",
+            "observations_path": "observations.json",
+            "scores_path": "scores.json",
+            "path": "traces.jsonl",
+        },
+    ],
+)
+def test_export_paths_must_match_selected_version(settings) -> None:
+    from insight_agent.config import LangfuseTraceExportFileConfig
+
+    with pytest.raises(ValidationError):
+        LangfuseTraceExportFileConfig.model_validate(settings)
