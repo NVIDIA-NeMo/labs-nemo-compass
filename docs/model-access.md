@@ -50,6 +50,13 @@ The source guides set `max_tokens: 16384` to limit each model response.
 Adjust that YAML setting to a value your endpoint supports.
 You can also set `model` and `api_base` in YAML or override them on the CLI.
 
+## Recommended models
+
+We recommend the following models for NeMo Compass:
+
+- **Claude Sonnet 5.5**
+- **GPT-6 Luna**
+
 ## Credentials
 
 Keep `.env` in the folder where you run the command to load it automatically:
