@@ -706,3 +706,109 @@ def test_v4_file_preserves_score_types(tmp_path, data_type, value):
     record = trace.evaluator_results["quality"][0]
     assert record["value"] == value
     assert record["dataType"] == data_type
+
+
+def test_v4_details_fetch_four_traces_concurrently_in_stable_order():
+    from threading import Barrier, Lock
+
+    barrier = Barrier(4, timeout=5)
+    lock = Lock()
+    active = peak = 0
+    trace_ids = [f"t{i}" for i in range(8)]
+    calls = []
+
+    def handler(request):
+        nonlocal active, peak
+        q = request.url.params
+        if request.url.path.endswith("/v3/scores"):
+            return httpx.Response(200, json=page([]))
+        trace_id = q.get("traceId")
+        if trace_id is None:
+            return httpx.Response(
+                200, json=page([observation("match", trace_id=t) for t in reversed(trace_ids)])
+            )
+        with lock:
+            calls.append((trace_id, q.get("cursor")))
+        if q.get("cursor"):
+            return httpx.Response(
+                200, json=page([observation("child", trace_id=trace_id, parent="root")])
+            )
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            barrier.wait()
+        finally:
+            with lock:
+                active -= 1
+        return httpx.Response(200, json=page([observation("root", trace_id=trace_id)], "next"))
+
+    snapshot = loader(handler).load()
+    assert peak == 4
+    assert [trace.id for trace in snapshot] == trace_ids
+    for trace_id in trace_ids:
+        assert [cursor for tid, cursor in calls if tid == trace_id] == [None, "next"]
+
+
+def test_v4_batched_scores_paginate_and_match_offline(tmp_path):
+    trace_ids = [f"t{i:03}" for i in range(101)]
+    items = [observation("root", trace_id=tid) for tid in trace_ids]
+    scores = [
+        exported_score(f"s-{tid}", {"kind": "observation", "id": "root", "traceId": tid})
+        for tid in trace_ids
+    ]
+    score_requests = []
+
+    def handler(request):
+        q = request.url.params
+        if request.url.path.endswith("/v3/scores"):
+            batch = q["traceId"].split(",")
+            score_requests.append((batch, q.get("cursor")))
+            assert "fromTimestamp" not in q and "toTimestamp" not in q
+            matching = [s for s in scores if s["subject"]["traceId"] in batch]
+            return httpx.Response(
+                200,
+                json=page(matching[50:])
+                if q.get("cursor")
+                else page(matching[:50], "next" if len(matching) > 50 else None),
+            )
+        if q.get("traceId"):
+            return httpx.Response(200, json=page([observation("root", trace_id=q["traceId"])]))
+        return httpx.Response(
+            200, json=page(items[100:]) if q.get("cursor") else page(items[:100], "selection-next")
+        )
+
+    live = list(loader(handler, max_traces=101).load())
+    offline = list(
+        file_loader(
+            tmp_path, items, scores, max_traces=101, base_url="https://langfuse.test"
+        ).load()
+    )
+    assert score_requests == [
+        (trace_ids[:100], None),
+        (trace_ids[:100], "next"),
+        (trace_ids[100:], None),
+    ]
+    for a, b in zip(live, offline, strict=True):
+        a.attributes.pop("observation_window")
+        b.attributes.pop("export_path")
+        assert a.model_dump() == b.model_dump()
+        assert a.evaluator_results["quality"][0]["id"] == f"s-{a.id}"
+
+
+def test_v4_concurrent_detail_failure_does_not_return_partial_snapshot():
+    def handler(request):
+        q = request.url.params
+        if q.get("traceId") == "bad":
+            return httpx.Response(400, json={"message": "failed detail request"})
+        return httpx.Response(
+            200,
+            json=page(
+                [observation("root", trace_id=q["traceId"])]
+                if q.get("traceId")
+                else [observation("root", trace_id=t) for t in ("good", "bad")]
+            ),
+        )
+
+    with pytest.raises(ApiError):
+        loader(handler).load()

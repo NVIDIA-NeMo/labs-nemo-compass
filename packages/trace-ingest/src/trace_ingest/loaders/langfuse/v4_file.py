@@ -5,10 +5,9 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, JsonValue
 
@@ -19,12 +18,9 @@ from trace_ingest.loaders.langfuse.config import (
     _LangfuseCorpusDescription,
 )
 from trace_ingest.loaders.langfuse.normalization import _normalize_v4_trace, _started_at
+from trace_ingest.loaders.langfuse.v4_records import _group_observations, _group_scores
 from trace_ingest.models import TraceSnapshot
 from trace_ingest.source_links import file_source_url
-
-if TYPE_CHECKING:
-    from langfuse.api.commons.types.observation_v2 import ObservationV2
-    from langfuse.api.scores_v3.types.score_v3 import ScoreV3
 
 
 class _Meta(BaseModel):
@@ -107,40 +103,8 @@ class LangfuseV4FileTraceLoader:
             scores = parse_obj_as(list[ScoreV3], _read_cli_data(self.config.scores_path))
         except ValueError as error:
             raise LangfuseTraceLoadError(f"Invalid Langfuse export records: {error}") from error
-        groups: dict[str, list[ObservationV2]] = defaultdict(list)
-        trace_ids_by_span: dict[str, set[str]] = defaultdict(set)
-        for observation in observations:
-            if not observation.id or not observation.trace_id or not observation.project_id:
-                raise LangfuseTraceLoadError(
-                    "observation id, traceId, and projectId must be nonempty"
-                )
-            groups[observation.trace_id].append(observation)
-            trace_ids_by_span[observation.id].add(observation.trace_id)
-        projects = {obs.project_id for obs in observations}
-        if len(projects) > 1:
-            raise LangfuseTraceLoadError("Langfuse export contains multiple projects")
-        by_trace: dict[str, list[ScoreV3]] = defaultdict(list)
-        score_ids: set[str] = set()
-        ignored = 0
-        for score in scores:
-            if score.id in score_ids:
-                raise LangfuseTraceLoadError(f"duplicate score id {score.id!r}")
-            score_ids.add(score.id)
-            if projects and score.project_id not in projects:
-                raise LangfuseTraceLoadError("score projectId does not match observations")
-            subject = score.subject
-            trace_id = None
-            if subject is not None and subject.kind == "trace":
-                trace_id = subject.id
-            elif subject is not None and subject.kind == "observation":
-                trace_id = subject.trace_id
-                candidates = trace_ids_by_span.get(subject.id, set())
-                if trace_id is None and len(candidates) == 1:
-                    trace_id = next(iter(candidates))
-            if trace_id in groups:
-                by_trace[trace_id].append(score)
-            else:
-                ignored += 1
+        groups = _group_observations(observations)
+        by_trace, ignored = _group_scores(groups, scores)
         traces = []
         for trace_id, items in groups.items():
             trace = _normalize_v4_trace(trace_id, items, by_trace[trace_id], self.config.base_url)

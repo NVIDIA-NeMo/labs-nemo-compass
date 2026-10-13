@@ -74,6 +74,12 @@ filter: '[{"type":"string","column":"environment","operator":"=","value":"produc
   filter. Both selection and detail reads include time bounds to avoid expensive
   all-history queries on Langfuse v4.
 
+The v4 online loader fetches observations for up to four traces concurrently and
+fetches scores in batches of up to 100 trace IDs. Each query still paginates as
+needed. These limits are automatic; no additional configuration is required.
+Online and offline v4 loaders share observation grouping, score association, and
+trace normalization.
+
 V4 traces can be partial at the window boundaries: steps starting before the start
 or at/after the end are excluded, even if they belong to a selected trace. Choose a
 window covering the entire execution when you need all its steps. Each loaded v4
