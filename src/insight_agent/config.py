@@ -104,7 +104,7 @@ class BraintrustConfig(ConfigModel):
 
 
 class LangfuseConfig(ConfigModel):
-    """Settings owned by the live Langfuse v3 trace loader."""
+    """Settings owned by the live Langfuse v3/v4 trace loader."""
 
     base_url: str | None = None
     from_timestamp: datetime
@@ -178,7 +178,7 @@ class TraceConfig(ConfigModel):
     )
     langfuse: LangfuseConfig | None = Field(
         default=None,
-        description="Live Langfuse v3 trace loader",
+        description="Live Langfuse v3/v4 trace loader",
     )
     langfuse_export: LangfuseExportConfig | None = Field(
         default=None,

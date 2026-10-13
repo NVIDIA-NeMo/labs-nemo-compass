@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from trace_ingest.loaders.trace_loaders import TraceDescription
+from trace_ingest.models import SpanKind, TraceSnapshot
 
 LANGFUSE_DEFAULT_MAX_TRACES = 100
 
@@ -26,8 +27,9 @@ class _LangfuseCorpusDescription(TraceDescription):
 
 
 class LangfuseTraceDescription(_LangfuseCorpusDescription):
-    """Run metadata for a live Langfuse v3 trace query."""
+    """Run metadata for a live Langfuse trace query."""
 
+    api_version: str | None
     base_url: str
     filter: str | None
     from_timestamp: str
@@ -37,7 +39,7 @@ class LangfuseTraceDescription(_LangfuseCorpusDescription):
 
 @dataclass(frozen=True)
 class LangfuseTraceConfig:
-    """Configuration for loading complete traces through the Langfuse v3 API."""
+    """Configuration for loading traces through the Langfuse v3 or v4 API."""
 
     from_timestamp: datetime
     to_timestamp: datetime
@@ -80,3 +82,44 @@ class LangfuseFileTraceConfig:
         object.__setattr__(self, "path", Path(self.path))
         if self.max_traces < 1:
             raise ValueError("max_traces must be at least 1")
+
+
+def _describe_corpus(source: str, snapshot: TraceSnapshot) -> _LangfuseCorpusDescription:
+    observation_count = call_count = unresolved_parent_count = 0
+    pending = [span for trace in snapshot for span in trace.root_spans]
+    while pending:
+        span = pending.pop()
+        observation_count += 1
+        call_count += span.kind is SpanKind.TOOL
+        pointer = span.attributes.get("source_pointer")
+        unresolved_parent_count += (
+            isinstance(pointer, dict) and "unresolved_parent_observation_id" in pointer
+        )
+        pending.extend(span.children)
+    return {
+        "source": source,
+        "trace_count": snapshot.trace_count,
+        "call_count": call_count,
+        "distinct_logical_cases": len(
+            {str(trace.attributes.get("logical_case_id") or trace.id) for trace in snapshot}
+        ),
+        "observation_count": observation_count,
+        "unresolved_parent_count": unresolved_parent_count,
+    }
+
+
+def _describe_live_source(
+    config: LangfuseTraceConfig,
+    base_url: str,
+    api_version: str | None,
+    snapshot: TraceSnapshot,
+) -> LangfuseTraceDescription:
+    return {
+        **_describe_corpus(f"langfuse:{base_url}", snapshot),
+        "base_url": base_url,
+        "api_version": api_version,
+        "filter": config.filter_string,
+        "from_timestamp": config.from_timestamp.isoformat(),
+        "to_timestamp": config.to_timestamp.isoformat(),
+        "max_traces": config.max_traces,
+    }

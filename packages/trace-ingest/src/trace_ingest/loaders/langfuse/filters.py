@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Build bounded Langfuse trace filters."""
+"""Compose version-specific Langfuse selection filters."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ def _bounded_filter(
     *,
     from_timestamp: datetime,
     to_timestamp: datetime,
+    time_column: str = "timestamp",
 ) -> str | None:
     if filter_string is None:
         return None
@@ -33,13 +34,13 @@ def _bounded_filter(
     time_conditions = [
         {
             "type": "datetime",
-            "column": "timestamp",
+            "column": time_column,
             "operator": ">=",
             "value": from_timestamp.isoformat(),
         },
         {
             "type": "datetime",
-            "column": "timestamp",
+            "column": time_column,
             "operator": "<",
             "value": to_timestamp.isoformat(),
         },

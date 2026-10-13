@@ -22,7 +22,13 @@ from trace_ingest.loaders.gym import (
 from trace_ingest.loaders.langfuse import (
     LangfuseFileTraceConfig,
     LangfuseFileTraceDescription,
+    LangfuseTraceConfig,
+    LangfuseTraceDescription,
+    LangfuseTraceLoader,
+    LangfuseTraceLoadError,
     LangfuseV3FileTraceLoader,
+    LangfuseV3TraceLoader,
+    LangfuseV4TraceLoader,
 )
 
 __all__ = [
@@ -41,4 +47,10 @@ __all__ = [
     "LangfuseFileTraceConfig",
     "LangfuseFileTraceDescription",
     "LangfuseV3FileTraceLoader",
+    "LangfuseTraceLoader",
+    "LangfuseV3TraceLoader",
+    "LangfuseV4TraceLoader",
+    "LangfuseTraceConfig",
+    "LangfuseTraceDescription",
+    "LangfuseTraceLoadError",
 ]
