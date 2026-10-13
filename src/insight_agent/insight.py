@@ -17,6 +17,7 @@ from trace_ingest.source_links import SourceURL
 from insight_agent.traces import TraceSnapshot
 
 Severity = Literal["low", "medium", "high"]
+Rating = Literal["low", "med", "high"]
 
 
 class SpanEvidence(BaseModel):
@@ -63,6 +64,11 @@ class Insight(BaseModel):
         default=None,
         exclude_if=lambda value: value is None,
         description="UTC timestamp of the last time a trace was added to this insight",
+    )
+    confidence: Rating | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="How well the codebase supports this insight's claim; set when code_base is configured.",
     )
 
 

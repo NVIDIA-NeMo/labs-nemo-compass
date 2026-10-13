@@ -15,7 +15,7 @@ An illustrative entry in `insights.yml`:
     the same request without asking the customer to correct the ID.
   severity: medium
   severity_reason: >-
-    Wastes a retry on every bad order ID instead of asking 
+    Wastes a retry on every bad order ID instead of asking
     the customer to fix it.
   evidence:
     - trace_id: run-12
@@ -117,10 +117,19 @@ for skipped analyses and limitations.
 
 ## Saved output
 
-The output is a YAML list with `name`, `description`, `trace_refs`, and optional
-`trace_links`, `severity`, `severity_reason` and `updated_date` for each insight.
-Each insight has at least two supporting traces.
-Empty spans and absent URLs are omitted.
+The output is a YAML list with `name`, `description`, `evidence`, and optional
+`updated_date`, `severity`, `severity_reason`, and `confidence` for each insight.
+Each insight has at least two supporting traces. Empty spans and absent URLs are omitted.
+
+`severity` describes the consequence using `low`, `medium`, or `high`, and
+`severity_reason` explains the choice in one sentence. Final compilation fills both
+fields for new and existing insights. Severity does not depend on trace count or confidence.
+
+`confidence` describes how well source investigation supports the insight's
+behavior, root cause, scope, and implied remediation. It is set when
+[`code_base`](configuration.md#code-aware-review) is configured, is `low`, `med`, or `high`,
+and is omitted otherwise. Existing insights retain their saved ratings during compilation;
+confidence review updates confidence without changing severity.
 
 `updated_date` is a UTC timestamp set when an insight is created or gains a trace it
 didn't already have. It is omitted until that first happens, and an insight that gains

@@ -26,7 +26,7 @@ from insight_agent.trace_loaders.langsmith import (
 
 
 def test_run_config_selects_langsmith_trace_loader(tmp_path):
-    config_file = tmp_path / "analyst.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text(
         """trace:
   max_traces: 25
@@ -57,7 +57,7 @@ compass_signals:
 
 
 def test_run_config_loads_a_langsmith_trace_export_file(tmp_path):
-    config_file = tmp_path / "analyst.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text(
         """trace:
   max_traces: 25

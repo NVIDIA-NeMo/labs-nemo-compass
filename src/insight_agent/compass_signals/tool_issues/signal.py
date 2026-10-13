@@ -579,7 +579,7 @@ class ToolIssueCard(BaseModel):
     mechanism_key: str = Field(min_length=1)
     finding_count: int = Field(ge=1)
     independent_case_count: int = Field(ge=1)
-    eligible_for_analyst: bool
+    eligible_for_insights: bool
     trace_ids: tuple[str, ...] = Field(min_length=1)
     representative_evidence: tuple[RepresentativeEvidence, ...] = Field(min_length=1)
     impact_status: Literal["not_established"]
@@ -589,7 +589,7 @@ class ToolIssueCard(BaseModel):
 def build_cards(
     findings: Iterable[Mapping[str, Any]], *, minimum_independent_cases: int = CARD_MINIMUM_CASES
 ) -> list[ToolIssueCard]:
-    """Promote recurring findings into compact Analyst-facing evidence cards."""
+    """Promote recurring findings into compact evidence cards for insight compilation."""
 
     groups: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for finding in findings:
@@ -622,7 +622,7 @@ def build_cards(
                 mechanism_key=mechanism,
                 finding_count=len(members),
                 independent_case_count=len(logical_cases),
-                eligible_for_analyst=eligible,
+                eligible_for_insights=eligible,
                 trace_ids=tuple(dict.fromkeys(str(member["trace_id"]) for member in members)),
                 representative_evidence=tuple(examples),
                 impact_status="not_established",
@@ -662,7 +662,7 @@ def problems_from_cards(
 
     problems: list[Problem] = []
     for card in cards:
-        if not include_audit and not card.eligible_for_analyst:
+        if not include_audit and not card.eligible_for_insights:
             continue
         representatives = card.representative_evidence
         trace_ids = tuple(dict.fromkeys(item.trace_id for item in representatives if item.trace_id))

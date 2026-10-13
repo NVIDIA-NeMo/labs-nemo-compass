@@ -255,6 +255,9 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
+        Leave confidence=None on new insights; an optional code review sets it.
+        Preserve existing confidence ratings.
+
         When inspecting supporting traces, record the specific relevant Span.id values
         in evidence[].spans as span_id, grouped by trace_id. A trace may have several supporting spans
         at any nesting depth. Use only IDs observed in that trace, never event row IDs.

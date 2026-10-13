@@ -109,10 +109,3 @@ compass_signals:
 The other keys are `grader_failure_patterns`, `tool_issues`, and `anomaly_and_patterns`.
 Omit a key, or use `true` or `{}`, for defaults. Keep at least one Compass Signal enabled.
 When combining examples, put their settings under a single `compass_signals` key.
-
-## Check findings against code
-
-Add `code_base: ../my-agent` to your configuration to consult your agent’s local source.
-The validator removes candidate problems contradicted by the code and retains those
-it cannot resolve from the repository. Its tools can search and read files; they cannot
-edit or execute your agent’s code.
