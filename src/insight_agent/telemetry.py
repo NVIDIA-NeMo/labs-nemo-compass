@@ -24,8 +24,6 @@ from opentelemetry import trace
 from insight_agent.config import RunConfig
 from insight_agent.version import __version__
 
-PROJECT = "compass-dogfood"
-
 tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig())
 span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
 
@@ -58,11 +56,15 @@ def _execution_metadata() -> dict[str, str | bool]:
 @contextmanager
 def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
     api_key = os.getenv("COMPASS_TELEMETRY_LANGSMITH_API_KEY", "").strip()
+    project = os.getenv("COMPASS_TELEMETRY_LANGSMITH_PROJECT", "").strip()
+    if api_key and not project:
+        print("Compass telemetry skipped: set COMPASS_TELEMETRY_LANGSMITH_PROJECT", file=sys.stderr)
+        api_key = ""
     endpoint = (
         os.getenv("COMPASS_TELEMETRY_LANGSMITH_ENDPOINT") or "https://api.smith.langchain.com"
     ).rstrip("/")
     source = config.trace.langsmith
-    if api_key and source and source.project == PROJECT:
+    if api_key and source and source.project == project:
         from langsmith.utils import get_api_url
 
         if get_api_url(source.api_url) == endpoint:
@@ -71,7 +73,7 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
             )
             api_key = ""
     if api_key:
-        headers = {"x-api-key": api_key, "Langsmith-Project": PROJECT}
+        headers = {"x-api-key": api_key, "Langsmith-Project": project}
         if workspace := os.getenv("COMPASS_TELEMETRY_LANGSMITH_WORKSPACE_ID"):
             headers["X-Tenant-Id"] = workspace
         # Nooa prints initialization messages; stdout belongs to the CLI's YAML output.
@@ -86,7 +88,7 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
                 # Use OpenInference span metadata for LangSmith compatibility.
                 root.set_attribute("metadata", json.dumps(_execution_metadata()))
                 print(
-                    f"Compass telemetry: full content to {PROJECT}; OTLP trace ID {root.get_span_context().trace_id:032x}",
+                    f"Compass telemetry: full content to {project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
                     file=sys.stderr,
                 )
             yield root

@@ -67,11 +67,12 @@ def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys,
     from insight_agent.telemetry import telemetry_session
 
     monkeypatch.setenv("COMPASS_TELEMETRY_LANGSMITH_API_KEY", "test-key")
+    monkeypatch.setenv("COMPASS_TELEMETRY_LANGSMITH_PROJECT", "custom-project")
     monkeypatch.setenv("COMPASS_TELEMETRY_LANGSMITH_ENDPOINT", "https://telemetry.example.com")
     config = RunConfig(
         trace={
             "langsmith": {
-                "project": "compass-dogfood",
+                "project": "custom-project",
                 "api_url": (
                     "https://telemetry.example.com/"
                     if same_endpoint
@@ -91,8 +92,10 @@ def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys,
     assert ("analyzing the telemetry project itself" in capsys.readouterr().err) == same_endpoint
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
+@pytest.mark.parametrize(
+    "api_key,project", [("", "custom-project"), ("test-key", ""), ("test-key", "custom-project")]
+)
+def test_cli_telemetry_in_fresh_process(tmp_path, api_key, project):
     """Exercise CLI opt-in, library instrumentation, full inputs, and YAML stdout together."""
     source = tmp_path / "input.jsonl"
     source.write_text(
@@ -105,7 +108,7 @@ def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
         + "\n"
     )
     result = subprocess.run(
-        [sys.executable, __file__, str(source), str(enabled)],
+        [sys.executable, __file__, str(source), str(bool(api_key and project))],
         env={
             **os.environ,
             "INSIGHT_AGENT_API_KEY": "dummy",
@@ -113,7 +116,8 @@ def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
             "LANGCHAIN_API_KEY": "legacy-source-key",
             "LANGSMITH_ENDPOINT": "https://source.example.com",
             "LANGSMITH_WORKSPACE_ID": "source-workspace",
-            "COMPASS_TELEMETRY_LANGSMITH_API_KEY": "test-key" if enabled else "",
+            "COMPASS_TELEMETRY_LANGSMITH_API_KEY": api_key,
+            "COMPASS_TELEMETRY_LANGSMITH_PROJECT": project,
             "COMPASS_TELEMETRY_LANGSMITH_ENDPOINT": "https://telemetry.example.com/api/v1/",
             "COMPASS_TELEMETRY_LANGSMITH_WORKSPACE_ID": "telemetry-workspace",
             "LANGSMITH_TRACING": "true",
@@ -124,6 +128,8 @@ def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
     )
     assert result.returncode == 0, result.stderr
     assert yaml.safe_load(result.stdout) == []
+    if api_key and not project:
+        assert "set COMPASS_TELEMETRY_LANGSMITH_PROJECT" in result.stderr
 
 
 # Nooa owns process-wide instrumentation. Each case gets the same lifecycle as the CLI.
@@ -195,7 +201,7 @@ def _run_cli(source, enabled):
             "https://telemetry.example.com/api/v1/otel/v1/traces",
             {
                 "x-api-key": "test-key",
-                "Langsmith-Project": "compass-dogfood",
+                "Langsmith-Project": "custom-project",
                 "X-Tenant-Id": "telemetry-workspace",
             },
         )
