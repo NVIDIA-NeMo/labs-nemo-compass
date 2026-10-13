@@ -89,12 +89,12 @@ def test_yaml_accepts_code_base(tmp_path: Path) -> None:
 def test_langfuse_trace_export_file_yaml_with_cli_limit(tmp_path: Path) -> None:
     config_path = tmp_path / "analyst.yaml"
     config_path.write_text(
-        "trace:\n  langfuse_trace_export_file:\n    api_version: v3\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
+        "trace:\n  langfuse_trace_export_file:\n    api_version: v3\n    traces_path: traces.json\n    observations_path: observations.json\n    scores_path: scores.json\ncompass_signals:\n  tool_issues: {}\n",
         encoding="utf-8",
     )
     config = RunConfig(_cli_parse_args=["--config", str(config_path), "--trace.max-traces", "200"])
     assert config.trace.langfuse_trace_export_file is not None
-    assert config.trace.langfuse_trace_export_file.path == Path("exports")
+    assert config.trace.langfuse_trace_export_file.traces_path == Path("traces.json")
     assert config.trace.langfuse_trace_export_file.api_version == "v3"
     assert config.trace.max_traces == 200
 
@@ -154,10 +154,12 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
 def test_langfuse_trace_export_file_requires_api_version(tmp_path: Path, source: str) -> None:
     if source == "yaml":
         config_path = tmp_path / "config.yaml"
-        config_path.write_text("trace:\n  langfuse_trace_export_file:\n    path: exports\n")
+        config_path.write_text(
+            "trace:\n  langfuse_trace_export_file:\n    traces_path: traces.json\n    observations_path: observations.json\n    scores_path: scores.json\n"
+        )
         args = ["--config", str(config_path)]
     else:
-        args = ["--trace.langfuse-trace-export-file.path", "exports"]
+        args = ["--trace.langfuse-trace-export-file.traces-path", "traces.json"]
     with pytest.raises(ValidationError) as error:
         RunConfig(_cli_parse_args=args)
     assert any(
@@ -191,15 +193,26 @@ def test_v4_export_paths_can_be_configured_through_cli() -> None:
     "settings",
     [
         {"api_version": "v3"},
-        {"api_version": "v3", "path": "traces.jsonl", "base_url": "https://langfuse.test"},
-        {"api_version": "v3", "path": "traces.jsonl", "scores_path": "scores.json"},
+        {
+            "api_version": "v3",
+            "traces_path": "traces.json",
+            "observations_path": "observations.json",
+            "scores_path": "scores.json",
+            "base_url": "https://langfuse.test",
+        },
+        {
+            "api_version": "v3",
+            "observations_path": "observations.json",
+            "scores_path": "scores.json",
+        },
+        {"api_version": "v3", "traces_path": "traces.json", "scores_path": "scores.json"},
         {"api_version": "v4", "observations_path": "observations.json"},
         {"api_version": "v4", "scores_path": "scores.json"},
         {
             "api_version": "v4",
             "observations_path": "observations.json",
             "scores_path": "scores.json",
-            "path": "traces.jsonl",
+            "traces_path": "traces.json",
         },
     ],
 )

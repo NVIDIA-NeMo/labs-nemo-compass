@@ -184,10 +184,12 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
                     max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
                 )
             )
-        assert source.path is not None
+        assert source.traces_path is not None
         return LangfuseV3FileTraceLoader(
             LangfuseV3FileTraceConfig(
-                path=source.path,
+                traces_path=source.traces_path,
+                observations_path=source.observations_path,
+                scores_path=source.scores_path,
                 max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
             )
         )

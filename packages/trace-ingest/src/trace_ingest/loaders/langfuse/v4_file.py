@@ -8,9 +8,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
-
-from pydantic import BaseModel, Field, JsonValue
+from typing import TYPE_CHECKING
 
 from trace_ingest.loaders.langfuse.config import (
     LANGFUSE_DEFAULT_MAX_TRACES,
@@ -18,6 +16,7 @@ from trace_ingest.loaders.langfuse.config import (
     _describe_corpus,
     _LangfuseCorpusDescription,
 )
+from trace_ingest.loaders.langfuse.file_io import _read_cli_data
 from trace_ingest.loaders.langfuse.normalization import _normalize_v4_trace, _started_at
 from trace_ingest.models import TraceSnapshot
 from trace_ingest.source_links import file_source_url
@@ -25,35 +24,6 @@ from trace_ingest.source_links import file_source_url
 if TYPE_CHECKING:
     from langfuse.api.commons.types.observation_v2 import ObservationV2
     from langfuse.api.scores_v3.types.score_v3 import ScoreV3
-
-
-class _Meta(BaseModel):
-    truncated: bool = Field(strict=True)
-    cursor: str | None = None
-
-
-class _Body(BaseModel):
-    data: list[dict[str, JsonValue]]
-    meta: _Meta
-
-
-class _Response(BaseModel):
-    status: Literal[200]
-    body: _Body
-
-
-def _read_cli_data(path: Path) -> list[dict[str, JsonValue]]:
-    try:
-        response = _Response.model_validate_json(path.read_bytes())
-    except (OSError, ValueError) as error:
-        raise LangfuseTraceLoadError(
-            f"Invalid Langfuse CLI export {path}; expected a successful --all --json response: {error}"
-        ) from error
-    if response.body.meta.truncated or response.body.meta.cursor:
-        raise LangfuseTraceLoadError(
-            f"Incomplete Langfuse CLI export {path}; increase --max-items or narrow the query and export again"
-        )
-    return response.body.data
 
 
 @dataclass(frozen=True)

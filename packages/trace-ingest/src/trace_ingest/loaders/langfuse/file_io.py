@@ -1,33 +1,40 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Read the JSONL export format documented for Langfuse."""
+"""Read complete native Langfuse CLI response files."""
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field, JsonValue
 
 from trace_ingest.loaders.langfuse.config import LangfuseTraceLoadError
 
 
-def _records(path: Path) -> Iterator[tuple[int, dict[str, object]]]:
-    count = 0
+class _Meta(BaseModel):
+    truncated: bool = Field(strict=True)
+    cursor: str | None = None
+
+
+class _Body(BaseModel):
+    data: list[dict[str, JsonValue]]
+    meta: _Meta
+
+
+class _Response(BaseModel):
+    status: Literal[200]
+    body: _Body
+
+
+def _read_cli_data(path: Path) -> list[dict[str, JsonValue]]:
     try:
-        with path.open(encoding="utf-8") as source:
-            for line_number, line in enumerate(source, 1):
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                    if not isinstance(record, dict):
-                        raise ValueError("expected one trace object per line")
-                except ValueError as error:
-                    raise LangfuseTraceLoadError(
-                        f"Invalid Langfuse export {path}:{line_number}: {error}"
-                    ) from error
-                count += 1
-                yield line_number, record
-    except (OSError, UnicodeError) as error:
-        raise LangfuseTraceLoadError(f"Cannot read Langfuse export {path}: {error}") from error
-    if not count:
-        raise LangfuseTraceLoadError(f"Langfuse export {path} contains no traces")
+        response = _Response.model_validate_json(path.read_bytes())
+    except (OSError, ValueError) as error:
+        raise LangfuseTraceLoadError(
+            f"Invalid Langfuse CLI export {path}; expected a successful --all --json response: {error}"
+        ) from error
+    if response.body.meta.truncated or response.body.meta.cursor:
+        raise LangfuseTraceLoadError(
+            f"Incomplete Langfuse CLI export {path}; increase --max-items or narrow the query and export again"
+        )
+    return response.body.data

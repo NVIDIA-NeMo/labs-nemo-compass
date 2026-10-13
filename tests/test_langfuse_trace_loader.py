@@ -37,6 +37,31 @@ START = datetime(2026, 8, 1, 12, tzinfo=timezone.utc)
 END = START + timedelta(hours=1)
 
 
+def cli_export(records):
+    return json.dumps({"status": 200, "body": {"data": records, "meta": {"truncated": False}}})
+
+
+def write_exports(tmp_path, records, *, max_traces=100):
+    traces, observations, scores = [], [], []
+    for record in records:
+        trace = (
+            json.loads(record.json(exclude_unset=True))
+            if isinstance(record, TraceWithFullDetails)
+            else dict(record)
+        )
+        obs = trace.pop("observations", [])
+        evaluations = trace.pop("scores", [])
+        trace["observations"] = [item["id"] for item in obs]
+        trace["scores"] = [item["id"] for item in evaluations]
+        traces.append(trace)
+        observations.extend(obs)
+        scores.extend(evaluations)
+    paths = [tmp_path / name for name in ("traces.json", "observations.json", "scores.json")]
+    for path, data in zip(paths, (traces, observations, scores), strict=True):
+        path.write_text(cli_export(data))
+    return LangfuseV3FileTraceConfig(*paths, max_traces=max_traces)
+
+
 @pytest.mark.parametrize("direct", [False, True])
 def test_native_export_matches_live_normalization(tmp_path, monkeypatch, direct):
     for name in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
@@ -50,9 +75,9 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, direct)
             observation("root", observation_type="AGENT"),
         ]
     )
-    export_path = tmp_path / "trace.jsonl"
-    export_path.write_text(native.json(exclude_unset=True) + "\n")
-    loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path))
+    config = write_exports(tmp_path, [native])
+    export_path = config.traces_path
+    loader = LangfuseV3FileTraceLoader(config)
     offline = list(loader.load())
     config = LangfuseTraceConfig(START, END, base_url="https://langfuse.test")
     client = FakeClient([([native], 1)], {native.id: native})
@@ -90,11 +115,9 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, direct)
 
 
 def test_export_limits_and_ordering(tmp_path):
-    export_path = tmp_path / "traces.jsonl"
     records = [provider_trace("old", timestamp=START)]
     records.extend(provider_trace(id, timestamp=END) for id in ("z", "a"))
-    export_path.write_text("\n".join(trace.json(exclude_unset=True) for trace in records))
-    loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path, max_traces=2))
+    loader = LangfuseV3FileTraceLoader(write_exports(tmp_path, records, max_traces=2))
     assert [t.id for t in loader.load()] == ["a", "z"]
     assert loader.describe()["truncated"] is True
     assert loader.describe()["export_trace_count"] == 3
@@ -107,10 +130,8 @@ def test_export_limits_and_ordering(tmp_path):
         ("duplicate_trace", "duplicate trace"),
         ("duplicate_observation", "duplicate observation"),
         ("missing_parent", "missing parent"),
-        ("wrong_trace", "traceId"),
+        ("wrong_trace", "missing referenced observations"),
         ("cycle", "parent cycle"),
-        ("summary", "validation error"),
-        ("list_response", "validation error"),
         ("missing_field", "validation error"),
     ],
 )
@@ -124,42 +145,132 @@ def test_export_rejects_invalid_records_before_limit(tmp_path, case, match):
         obs = observation("child", parent_id="child")
     native = provider_trace(observations=[obs, obs] if case == "duplicate_observation" else [obs])
     record = json.loads(native.json(exclude_unset=True))
-    if case == "summary":
-        record["observations"] = ["child"]
-    if case == "list_response":
-        record = {"data": [record], "meta": {"totalPages": 2}}
     if case == "missing_field":
         del record["timestamp"]
     newest_id = "trace-1" if case == "duplicate_trace" else "newest"
-    export_path = tmp_path / "traces.jsonl"
-    export_path.write_text(
-        provider_trace(newest_id, timestamp=END).json(exclude_unset=True)
-        + "\n"
-        + json.dumps(record)
+    config = write_exports(
+        tmp_path, [provider_trace(newest_id, timestamp=END), record], max_traces=1
     )
     with pytest.raises(LangfuseTraceLoadError, match=match):
-        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path, max_traces=1)).load()
+        LangfuseV3FileTraceLoader(config).load()
 
 
 @pytest.mark.parametrize("contents", [b"{", b"\xff", b"[]"])
 def test_export_rejects_bad_files(tmp_path, contents):
-    export_path = tmp_path / "traces.jsonl"
-    export_path.write_bytes(contents)
+    config = write_exports(tmp_path, [])
+    config.traces_path.write_bytes(contents)
     with pytest.raises(LangfuseTraceLoadError):
-        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path)).load()
+        LangfuseV3FileTraceLoader(config).load()
 
 
-@pytest.mark.parametrize("contents", ["", "\n  \n"])
-def test_export_empty_file(tmp_path, contents):
-    export_path = tmp_path / "traces.jsonl"
-    export_path.write_text(contents)
-    with pytest.raises(LangfuseTraceLoadError, match="no traces"):
-        LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path)).load()
+def test_export_empty_responses(tmp_path):
+    loader = LangfuseV3FileTraceLoader(write_exports(tmp_path, []))
+    assert list(loader.load()) == []
 
 
 def test_export_invalid_limit():
     with pytest.raises(ValueError, match="at least 1"):
-        LangfuseV3FileTraceConfig(Path("unused"), max_traces=0)
+        LangfuseV3FileTraceConfig(
+            Path("traces"), Path("observations"), Path("scores"), max_traces=0
+        )
+
+
+@pytest.mark.parametrize("name", ["traces_path", "observations_path", "scores_path"])
+@pytest.mark.parametrize("failure", ["truncated", "cursor", "status"])
+def test_bulk_exports_require_complete_cli_responses(tmp_path, name, failure):
+    config = write_exports(tmp_path, [provider_trace()])
+    path = getattr(config, name)
+    payload = json.loads(path.read_text())
+    if failure == "status":
+        payload["status"] = 422
+    else:
+        payload["body"]["meta"][failure] = True if failure == "truncated" else "next"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(LangfuseTraceLoadError):
+        LangfuseV3FileTraceLoader(config).load()
+
+
+@pytest.mark.parametrize("field", ["observations", "scores"])
+def test_bulk_exports_reject_missing_referenced_records(tmp_path, field):
+    config = write_exports(tmp_path, [provider_trace()])
+    payload = json.loads(config.traces_path.read_text())
+    payload["body"]["data"][0][field] = ["missing"]
+    config.traces_path.write_text(json.dumps(payload))
+    with pytest.raises(LangfuseTraceLoadError, match="missing referenced"):
+        LangfuseV3FileTraceLoader(config).load()
+
+
+@pytest.mark.parametrize("field", ["observations", "scores"])
+def test_bulk_exports_require_reference_arrays(tmp_path, field):
+    config = write_exports(tmp_path, [provider_trace()])
+    payload = json.loads(config.traces_path.read_text())
+    del payload["body"]["data"][0][field]
+    config.traces_path.write_text(json.dumps(payload))
+    with pytest.raises(LangfuseTraceLoadError, match="require observation and score references"):
+        LangfuseV3FileTraceLoader(config).load()
+
+
+def test_bulk_exports_allow_reused_observation_ids_between_traces(tmp_path):
+    config = write_exports(
+        tmp_path,
+        [provider_trace(id, observations=[observation("same", trace_id=id)]) for id in ("a", "b")],
+    )
+    snapshot = LangfuseV3FileTraceLoader(config).load()
+    assert [(t.id, t.root_spans[0].id) for t in snapshot] == [("a", "same"), ("b", "same")]
+
+
+@pytest.mark.parametrize(
+    "case", ["duplicate", "missing_observation", "unrelated", "session", "correction"]
+)
+def test_bulk_score_association(tmp_path, case):
+    config = write_exports(tmp_path, [provider_trace()])
+    score = {
+        "id": "evaluation",
+        "name": "quality",
+        "dataType": "NUMERIC",
+        "value": 0.5,
+        "traceId": "trace-1",
+        "source": "API",
+        "timestamp": START.isoformat(),
+        "createdAt": START.isoformat(),
+        "updatedAt": START.isoformat(),
+        "metadata": {},
+        "environment": "test",
+    }
+    if case == "missing_observation":
+        score["observationId"] = "missing"
+    elif case == "unrelated":
+        score["traceId"] = "another"
+    elif case == "session":
+        del score["traceId"]
+        score["sessionId"] = "a-session"
+    elif case == "correction":
+        score["dataType"] = "CORRECTION"
+        score["stringValue"] = "corrected"
+    config.scores_path.write_text(cli_export([score, score] if case == "duplicate" else [score]))
+    loader = LangfuseV3FileTraceLoader(config)
+    if case in {"session", "unrelated"}:
+        assert next(iter(loader.load())).evaluator_results == {}
+    else:
+        message = {
+            "duplicate": "duplicate score",
+            "missing_observation": "missing observation",
+            "correction": "CORRECTION",
+        }[case]
+        with pytest.raises(LangfuseTraceLoadError, match=message):
+            loader.load()
+
+
+def test_bulk_exports_ignore_observations_from_unselected_traces(tmp_path):
+    config = write_exports(tmp_path, [provider_trace()])
+    config.observations_path.write_text(
+        cli_export(
+            [json.loads(observation("unrelated", trace_id="another").json(exclude_unset=True))]
+        )
+    )
+    snapshot = LangfuseV3FileTraceLoader(config).load()
+    assert [trace.id for trace in snapshot] == ["trace-1"]
+    assert next(iter(snapshot)).root_spans == []
 
 
 def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch, select_signals):
@@ -181,8 +292,7 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
             )
         ]
     )
-    export_path = tmp_path / "trace.jsonl"
-    export_path.write_text(native.json(exclude_unset=True))
+    config = write_exports(tmp_path, [native])
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key")
     monkeypatch.setattr(Langfuse, "__init__", lambda *a, **kw: pytest.fail("offline client"))
@@ -193,8 +303,12 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
             [
                 "--trace.langfuse-trace-export-file.api-version",
                 "v3",
-                "--trace.langfuse-trace-export-file.path",
-                str(export_path),
+                "--trace.langfuse-trace-export-file.traces-path",
+                str(config.traces_path),
+                "--trace.langfuse-trace-export-file.observations-path",
+                str(config.observations_path),
+                "--trace.langfuse-trace-export-file.scores-path",
+                str(config.scores_path),
                 "--compass-signals",
                 json.dumps(
                     select_signals(
@@ -233,11 +347,9 @@ def test_corpus_reports_count_only_selected_traces(tmp_path, offline):
         observations=[observation("span", trace_id="oldest")],
     )
     if offline:
-        export_path = tmp_path / "traces.jsonl"
-        export_path.write_text(
-            "\n".join(t.json(exclude_unset=True) for t in (newest, oldest, middle))
+        loader = LangfuseV3FileTraceLoader(
+            write_exports(tmp_path, [newest, oldest, middle], max_traces=2)
         )
-        loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path, max_traces=2))
     else:
         loader = LangfuseTraceLoader(
             LangfuseTraceConfig(
@@ -308,9 +420,7 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
     payload["scores"] = records
     native = parse_obj_as(TraceWithFullDetails, payload)
     if offline:
-        export_path = tmp_path / "trace.jsonl"
-        export_path.write_text(native.json(exclude_unset=True))
-        loader = LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path))
+        loader = LangfuseV3FileTraceLoader(write_exports(tmp_path, [native]))
     else:
         loader = LangfuseTraceLoader(
             LangfuseTraceConfig(START, END, base_url="https://example.test"),
@@ -340,7 +450,12 @@ def test_export_config_is_exclusive():
     with pytest.raises(ValidationError, match="exactly one loader"):
         TraceConfig.model_validate(
             {
-                "langfuse_trace_export_file": {"path": "a.jsonl", "api_version": "v3"},
+                "langfuse_trace_export_file": {
+                    "traces_path": "traces.json",
+                    "observations_path": "observations.json",
+                    "scores_path": "scores.json",
+                    "api_version": "v3",
+                },
                 "filesystem": {"path": "b.jsonl"},
             }
         )
@@ -736,9 +851,8 @@ def test_export_argument_analysis_distinguishes_missing_input(
             ),
         ]
     )
-    export_path = tmp_path / "trace.jsonl"
-    export_path.write_text(native.json(exclude_unset=True))
-    trace = next(iter(LangfuseV3FileTraceLoader(LangfuseV3FileTraceConfig(export_path)).load()))
+    config = write_exports(tmp_path, [native])
+    trace = next(iter(LangfuseV3FileTraceLoader(config).load()))
     call = to_tool_issue_trace(trace)
 
     if input_value is None:
