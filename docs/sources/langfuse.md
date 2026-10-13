@@ -143,6 +143,17 @@ trace:
     base_url: https://langfuse.example.com
 ```
 
+To analyze the optional scores, use the [`grader_failure_patterns`](../compass-signals.md#grader-failures) evidence stream
+(configured under `compass_signals`). It is enabled by default; to enable it explicitly,
+add this at the top level of `config.yaml`:
+
+```yaml
+compass_signals:
+  grader_failure_patterns: {}
+```
+
+This leaves other streams enabled. Without evaluator results, this stream skips.
+
 Omit `scores_path` if you have no scores to supply. `base_url` is optional and enables
 Langfuse links. Online and offline loaders share trace normalization and score association.
 
