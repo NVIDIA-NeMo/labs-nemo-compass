@@ -255,6 +255,25 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
+        After merging findings, assign severity to each new insight based on
+        the observed consequence in its supporting traces, including recovery:
+        - high: the agent fails its primary task, silently loses state, or
+          produces materially incorrect user-visible output without recovery.
+        - med: the agent completes the task but incurs unnecessary turns,
+          delay, partial recovery, or degraded output quality.
+        - low: minor inconvenience or cosmetic impact with no meaningful
+          degradation of the completed task.
+        Leave severity=None when the traces do not establish the outcome.
+        Judge consequence independently of occurrence count and confidence;
+        do not reduce a severe consequence because it occurs in few traces.
+        Use the merged supporting evidence, not just the failing span. Source
+        code access is not required. Preserve existing insights' ratings.
+
+        After assigning severity, add severity_reason to each new insight based on
+        the observed consequence in its supporting traces. Provide the reason in plain, direct language
+        describing why it got that bucket. No hedging, no filler, no "this
+        may indicate" -- just the concrete problem and its consequence.
+
         Leave confidence=None on new insights; an optional code review sets it.
         Preserve existing confidence ratings.
 
@@ -265,29 +284,6 @@ class InsightCompilation(Agent):
         the evidence concerns the whole trace or no specific span can be identified.
         Preserve existing evidence spans when their traces are unavailable.
         Leave all evidence url fields unset; the application resolves URLs after compilation.
-
-        Severity
-        --------
-        Assign every insight you return a severity of "low", "medium", or
-        "high", plus a one-sentence severity_reason in plain, direct language
-        describing why it got that bucket. No hedging, no filler, no "this
-        may indicate" -- just the concrete problem and its consequence. Set
-        severity and severity_reason on existing insights too, even if they
-        were not set before; this is the one thing you're allowed to add to
-        an otherwise-unmodified existing insight.
-
-        Use this rubric:
-
-        - high: the agent goes off track, performs harmful or clearly
-        unintended behavior, violates ETHOS.md outright, or is blocked from
-        completing its task. Needs a fix right away.
-
-        - medium: the agent completes its task but wastes tokens or other
-        resources, takes a roundabout path to the result, or hits tool
-        errors it recovers from. Worth fixing, not urgent.
-
-        - low: a minor or cosmetic issue that does not change the outcome
-        for the user. Fix whenever convenient.
 
         After validating, narrowing, and merging insights, find all traces that support
         each final claim. Keep only checked examples and existing references in evidence.
