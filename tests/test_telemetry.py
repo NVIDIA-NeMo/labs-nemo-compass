@@ -59,23 +59,40 @@ def test_execution_metadata_tracks_compass_checkout(monkeypatch, tmp_path):
     assert telemetry._execution_metadata() == metadata
 
 
-def test_analyzing_telemetry_project_skips_export(monkeypatch, capsys):
+@pytest.mark.parametrize("same_endpoint", [True, False])
+def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys, same_endpoint):
     from unittest.mock import patch
 
     from insight_agent.config import RunConfig
     from insight_agent.telemetry import telemetry_session
 
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    config = RunConfig(trace={"langsmith": {"project": "compass-dogfood"}})
-    with patch("insight_agent.telemetry.enable_tracing") as enable:
+    monkeypatch.setenv("COMPASS_TELEMETRY_LANGSMITH_API_KEY", "test-key")
+    monkeypatch.setenv("COMPASS_TELEMETRY_LANGSMITH_ENDPOINT", "https://telemetry.example.com")
+    config = RunConfig(
+        trace={
+            "langsmith": {
+                "project": "compass-dogfood",
+                "api_url": (
+                    "https://telemetry.example.com/"
+                    if same_endpoint
+                    else "https://source.example.com"
+                ),
+            }
+        }
+    )
+    with (
+        patch("insight_agent.telemetry.enable_tracing") as enable,
+        patch("insight_agent.telemetry.exporters.otlp"),
+        patch("insight_agent.telemetry.shutdown_traces"),
+    ):
         with telemetry_session(config):
             pass
-    enable.assert_not_called()
-    assert "analyzing the telemetry project itself" in capsys.readouterr().err
+    assert enable.called == (not same_endpoint)
+    assert ("analyzing the telemetry project itself" in capsys.readouterr().err) == same_endpoint
 
 
-@pytest.mark.parametrize("key_name", [None, "LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"])
-def test_cli_telemetry_in_fresh_process(tmp_path, key_name):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_cli_telemetry_in_fresh_process(tmp_path, enabled):
     """Exercise CLI opt-in, library instrumentation, full inputs, and YAML stdout together."""
     source = tmp_path / "input.jsonl"
     source.write_text(
@@ -88,13 +105,17 @@ def test_cli_telemetry_in_fresh_process(tmp_path, key_name):
         + "\n"
     )
     result = subprocess.run(
-        [sys.executable, __file__, str(source), str(key_name is not None)],
+        [sys.executable, __file__, str(source), str(enabled)],
         env={
             **os.environ,
             "INSIGHT_AGENT_API_KEY": "dummy",
-            "LANGSMITH_API_KEY": "",
-            "LANGCHAIN_API_KEY": "",
-            **({key_name: "test-key"} if key_name else {}),
+            "LANGSMITH_API_KEY": "source-key",
+            "LANGCHAIN_API_KEY": "legacy-source-key",
+            "LANGSMITH_ENDPOINT": "https://source.example.com",
+            "LANGSMITH_WORKSPACE_ID": "source-workspace",
+            "COMPASS_TELEMETRY_LANGSMITH_API_KEY": "test-key" if enabled else "",
+            "COMPASS_TELEMETRY_LANGSMITH_ENDPOINT": "https://telemetry.example.com/api/v1/",
+            "COMPASS_TELEMETRY_LANGSMITH_WORKSPACE_ID": "telemetry-workspace",
             "LANGSMITH_TRACING": "true",
         },
         capture_output=True,
@@ -170,7 +191,14 @@ def _run_cli(source, enabled):
     if not enabled:
         assert not records
     else:
-        assert factory.call_args.args[1]["Langsmith-Project"] == "compass-dogfood"
+        factory.assert_called_once_with(
+            "https://telemetry.example.com/api/v1/otel/v1/traces",
+            {
+                "x-api-key": "test-key",
+                "Langsmith-Project": "compass-dogfood",
+                "X-Tenant-Id": "telemetry-workspace",
+            },
+        )
         root = next(r for r in records if r.name == "compass")
         metadata = json.loads(str((root.attributes or {})["metadata"]))
         assert metadata["compass.version"]

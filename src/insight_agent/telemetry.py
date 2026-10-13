@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Process-wide tracing for one Compass CLI invocation; enabled by LangSmith credentials."""
+"""Process-wide tracing for one Compass CLI invocation; enabled by dedicated credentials."""
 
 from __future__ import annotations
 
@@ -57,22 +57,22 @@ def _execution_metadata() -> dict[str, str | bool]:
 
 @contextmanager
 def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
-    api_key = (
-        os.getenv("LANGSMITH_API_KEY", "").strip() or os.getenv("LANGCHAIN_API_KEY", "").strip()
-    )
-    endpoint = (os.getenv("LANGSMITH_ENDPOINT") or "https://api.smith.langchain.com").rstrip("/")
+    api_key = os.getenv("COMPASS_TELEMETRY_LANGSMITH_API_KEY", "").strip()
+    endpoint = (
+        os.getenv("COMPASS_TELEMETRY_LANGSMITH_ENDPOINT") or "https://api.smith.langchain.com"
+    ).rstrip("/")
     source = config.trace.langsmith
-    if (
-        api_key
-        and source
-        and source.project == PROJECT
-        and (source.api_url or endpoint).rstrip("/") == endpoint
-    ):
-        print("Compass telemetry skipped: analyzing the telemetry project itself", file=sys.stderr)
-        api_key = ""
+    if api_key and source and source.project == PROJECT:
+        from langsmith.utils import get_api_url
+
+        if get_api_url(source.api_url) == endpoint:
+            print(
+                "Compass telemetry skipped: analyzing the telemetry project itself", file=sys.stderr
+            )
+            api_key = ""
     if api_key:
         headers = {"x-api-key": api_key, "Langsmith-Project": PROJECT}
-        if workspace := os.getenv("LANGSMITH_WORKSPACE_ID"):
+        if workspace := os.getenv("COMPASS_TELEMETRY_LANGSMITH_WORKSPACE_ID"):
             headers["X-Tenant-Id"] = workspace
         # Nooa prints initialization messages; stdout belongs to the CLI's YAML output.
         with redirect_stdout(sys.stderr):

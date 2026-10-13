@@ -91,7 +91,7 @@ Return to your [source guide](../README.md#start-here) to finish setup.
 | An ethos document | Its contents are included in model-based analysis. |
 | Code validation | Selected source excerpts are sent to the inference provider. The validator has read-only file tools. |
 | Remote sentiment embeddings | Extracted user messages are sent to the configured embedding endpoint. |
-| Full-content telemetry | When `LANGSMITH_API_KEY` (or `LANGCHAIN_API_KEY`) is set, input snapshots, model/tool exchanges, findings, and supplied context are uploaded to `compass-dogfood` on your LangSmith endpoint. |
+| Full-content telemetry | When `COMPASS_TELEMETRY_LANGSMITH_API_KEY` is set, input snapshots, model/tool exchanges, findings, and supplied context are uploaded to `compass-dogfood`. Set `COMPASS_TELEMETRY_LANGSMITH_ENDPOINT` for an enterprise endpoint and `COMPASS_TELEMETRY_LANGSMITH_WORKSPACE_ID` if required. Trace-source credentials do not enable telemetry. |
 | Local sentiment embeddings | The embedding model runs on your machine; model and tokenizer files may download on first use. |
 
 Remote sentiment also loads a tokenizer, which may need an initial download.
