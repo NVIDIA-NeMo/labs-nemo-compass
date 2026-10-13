@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -79,33 +78,10 @@ class MLflowExportConfig(ConfigModel):
     path: Path
 
 
-class LangfuseTraceExportFileConfig(ConfigModel):
-    """Settings for the documented Langfuse v3/v4 export files."""
+class LangfuseExportConfig(ConfigModel):
+    """Settings owned by the native Langfuse v3 export loader."""
 
-    api_version: Literal["v3", "v4"]
-    path: Path | None = None
-    observations_path: Path | None = None
-    scores_path: Path | None = None
-    base_url: str | None = None
-
-    @model_validator(mode="after")
-    def validate_version_options(self) -> LangfuseTraceExportFileConfig:
-        if self.api_version == "v3":
-            if self.path is None:
-                raise ValueError("v3 exports require path")
-            if any(
-                value is not None
-                for value in (self.observations_path, self.scores_path, self.base_url)
-            ):
-                raise ValueError(
-                    "observations_path, scores_path, and base_url require api_version=v4"
-                )
-        else:
-            if self.observations_path is None:
-                raise ValueError("v4 exports require observations_path")
-            if self.path is not None:
-                raise ValueError("v4 exports use observations_path instead of path")
-        return self
+    path: Path
 
 
 class BraintrustConfig(ConfigModel):
@@ -128,7 +104,7 @@ class BraintrustConfig(ConfigModel):
 
 
 class LangfuseConfig(ConfigModel):
-    """Settings owned by the live Langfuse v3/v4 trace loader."""
+    """Settings owned by the live Langfuse v3 trace loader."""
 
     base_url: str | None = None
     from_timestamp: datetime
@@ -202,11 +178,11 @@ class TraceConfig(ConfigModel):
     )
     langfuse: LangfuseConfig | None = Field(
         default=None,
-        description="Live Langfuse v3/v4 trace loader",
+        description="Live Langfuse v3 trace loader",
     )
-    langfuse_trace_export_file: LangfuseTraceExportFileConfig | None = Field(
+    langfuse_export: LangfuseExportConfig | None = Field(
         default=None,
-        description="Langfuse v3/v4 trace export file loader",
+        description="Native Langfuse v3 trace-detail export loader",
     )
     langsmith: LangSmithTraceSourceConfig | None = Field(
         default=None,
@@ -230,7 +206,7 @@ class TraceConfig(ConfigModel):
                 self.intake,
                 self.braintrust,
                 self.langfuse,
-                self.langfuse_trace_export_file,
+                self.langfuse_export,
                 self.langsmith,
                 self.langsmith_trace_export_file,
             )
@@ -309,7 +285,7 @@ class RunConfig(BaseSettings):
     config: Path | None = Field(
         default=None,
         exclude=True,
-        description="Optional YAML Analyst configuration",
+        description="Optional YAML configuration file",
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")

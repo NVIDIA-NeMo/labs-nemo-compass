@@ -3,134 +3,105 @@
 
 # Analyze Langfuse traces
 
-Compass supports Langfuse v3 and v4, automatically detecting the version for live
-connections. Online loaders include available trace and observation scores; none are required.
-Scores support `grader_failure_patterns`, which skips with "No evaluator results"
-when none are available. Other analyses can still run.
+Choose a time window containing the conversations you want to understand.
+Recorded scores, including scores attached to observations, are included automatically.
 
-Langfuse v4 moved from a trace-centric to an observation-centric model: its
-[Observations API](https://langfuse.com/docs/api-and-data-platform/features/public-api#observations-api-v2)
-returns observations. Compass groups them by `traceId` to reconstruct traces for analysis.
+This adapter supports the v3 API, tested with self-hosted Langfuse 3.205.1 and
+Python SDK 3.15. Langfuse v4 is not supported.
 
-## Setup
+## Connect and run
 
-Install with the `langfuse` extra, then [configure your inference model and key](../model-access.md#choose-a-model).
-Until the PyPI release is available, install with [uv](https://docs.astral.sh/uv/):
+With [uv and Git installed](../../README.md#start-here), install the CLI with Langfuse support:
 
 ```bash
-uv tool install 'insight-agent[langfuse] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
+uv tool install \
+  'insight-agent[langfuse] @ git+https://github.com/NVIDIA-NeMo/labs-nemo-compass.git@main'
 ```
 
-Put your deployment URL and project API keys in `.env`:
+[Configure your inference model and key](../model-access.md#choose-a-model).
+Add your project’s Langfuse keys to `.env`:
 
 ```dotenv
-LANGFUSE_BASE_URL=https://langfuse.example.com
 LANGFUSE_PUBLIC_KEY=your-public-key
 LANGFUSE_SECRET_KEY=your-secret-key
 ```
 
-## Analyze live traces
-
-Save as `config.yaml`, adjusting the dates and optional filter:
+Save this as `config.yaml`. Replace the URL and dates with your deployment and trace window:
 
 ```yaml
-output_path: insights.yml
+max_tokens: 16384
 trace:
   max_traces: 100
   langfuse:
+    base_url: https://langfuse.example.com
     from_timestamp: 2026-09-01T00:00:00Z
     to_timestamp: 2026-09-02T00:00:00Z
-    filter: '[{"type":"string","column":"environment","operator":"=","value":"production"}]'
 ```
 
 ```bash
 insight-agent --config config.yaml
 ```
 
-Results are written to `insights.yml` when insights are found. See [reading results](../results.md).
-Paths resolve from your working directory. API keys select the project; optional
-`trace.langfuse.base_url` overrides the environment URL. The default limit is 100 traces.
+Open `insights.yml` if the run produced insights. [Read your results](../results.md)
+for help with findings or skipped Compass Signals.
 
-Both timestamps are required, with a timezone: start inclusive, end exclusive.
-Selection differs by version:
+## Select the right traces
 
-- **V3:** filters select traces; Compass fetches their full details.
-- **V4:** filters select observations; Compass fetches all observations for their trace IDs
-  **within the same window**. Observations outside it are excluded; costs and latency
-  reflect only loaded observations. Widen the window when you need complete traces.
+Your API keys select the project. Both timestamps are required and must include a timezone;
+the start is inclusive and the end is exclusive. The default limit is 100 complete traces.
+`base_url` overrides `LANGFUSE_BASE_URL` in the environment.
 
-Use your version's [v3 trace](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces)
-or [v4 observation](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations)
-filter syntax. For example, `name` means trace name in v3 and observation name in v4;
-use `traceName` for v4 trace names. Compass fetches v4 observations for up to four trace IDs
-concurrently and batches score requests; no tuning is needed.
+To filter by environment, add this under `trace.langfuse`:
 
-For tool-schema checks, record definitions in `input.tools` on generation observations.
-See [Langfuse compatibility](https://langfuse.com/docs/compatibility) for v4 data-availability delays.
+```yaml
+filter: '[{"type":"string","column":"environment","operator":"=","value":"production"}]'
+```
+
+For tool-schema checks, record tool definitions in `input.tools` on generation observations.
+Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-installed, use the example for your server version below.
-
-Coding agents can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
-
-### Langfuse v3
-
-```bash
-langfuse --env .env --api-version 3 api traces list \
-  --from-timestamp 2026-09-01T00:00:00Z \
-  --to-timestamp 2026-09-02T00:00:00Z \
-  --all --json |
-jq -r '.body.data[].id' |
-while read -r trace_id; do
-  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
-    jq -c '.body'
-done > langfuse-v3.jsonl
-```
-
-Replace your config's `trace` section with:
+Replace the `trace` section with a file containing complete v3 trace details:
 
 ```yaml
 trace:
-  langfuse_trace_export_file:
-    api_version: v3
-    path: langfuse-v3.jsonl
+  max_traces: 100
+  langfuse_export:
+    path: langfuse-traces.jsonl
 ```
 
-### Langfuse v4
+Rerun the same analysis command. Local loading needs inference credentials only.
+Use complete trace-detail records with observations; trace-list summaries and UI CSV files
+do not contain enough information. Raw API responses, CLI response envelopes, and directories
+of immediate `.json` or `.jsonl` files are accepted. The loader validates all records, rejects
+duplicate IDs, and selects the newest traces up to the limit. The extra installs SDK `>=3.15,<4`.
 
-Export observations and optionally project scores if you plan to use the
-[`grader_failure_patterns`](../compass-signals.md#grader-failures) signal:
+<details>
+<summary>Create a complete export</summary>
+
+Set your Langfuse credentials, including `LANGFUSE_BASE_URL`, in `.env` and adjust the dates.
+This writes a new file and refuses to overwrite an existing one.
 
 ```bash
-langfuse --env .env --api-version 4 api observations list \
-  --from-start-time 2026-09-01T00:00:00Z \
-  --to-start-time 2026-09-02T00:00:00Z \
-  --fields core,basic,io,metadata,model,usage,prompt,trace_context \
-  --all --json > observations.json
+uv run --isolated --no-project --env-file .env --with 'langfuse>=3.15,<4' python - <<'PY'
+from datetime import datetime, timezone
+from itertools import count
+from langfuse import Langfuse
 
-# Optional
-langfuse --env .env --api-version 4 api scores list \
-  --fields details,subject,annotation --all --json > scores.json
+client = Langfuse(tracing_enabled=False)
+with open("langfuse-traces.jsonl", "x", encoding="utf-8") as output:
+    for page in count(1):
+        result = client.api.trace.list(
+            from_timestamp=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            to_timestamp=datetime(2026, 9, 2, tzinfo=timezone.utc),
+            page=page, limit=100, order_by="timestamp.asc",
+        )
+        for trace in result.data:
+            output.write(client.api.trace.get(trace.id).json(by_alias=True) + "\n")
+        if page >= result.meta.total_pages:
+            break
+PY
 ```
 
-Keep exported responses unchanged. Compass rejects truncated exports: `--all` defaults
-to 1,000 items and at most 100 requests. Increase `--max-items` / `--limit` or narrow
-the query if needed. Observation filters and dates can exclude observations
-belonging to the same trace.
-
-Replace your config's `trace` section with:
-
-```yaml
-trace:
-  langfuse_trace_export_file:
-    api_version: v4
-    observations_path: observations.json
-    scores_path: scores.json  # Optional
-    base_url: https://langfuse.example.com
-```
-
-`base_url` is optional and enables Langfuse links in Compass' results.
-
-Run `insight-agent --config config.yaml` as above.
+</details>

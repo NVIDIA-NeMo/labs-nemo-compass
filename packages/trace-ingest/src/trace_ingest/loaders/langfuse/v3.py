@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Load live Langfuse v3 trace records."""
+"""Load complete traces through the Langfuse v3 API."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
@@ -13,46 +14,45 @@ from trace_ingest.loaders.langfuse.config import (
     LangfuseTraceConfig,
     LangfuseTraceDescription,
     LangfuseTraceLoadError,
-    _describe_live_source,
 )
 from trace_ingest.loaders.langfuse.filters import _bounded_filter
 from trace_ingest.loaders.langfuse.normalization import (
+    _describe_corpus,
     _normalize_trace,
     _trace_id,
     _trace_timestamp,
 )
-from trace_ingest.models import (
-    Trace,
-    TraceSnapshot,
-)
+from trace_ingest.models import Trace, TraceSnapshot
 from trace_ingest.source_links import http_source_url
 
 if TYPE_CHECKING:
     from langfuse import Langfuse
-    from langfuse.api.commons.types.trace_with_details import TraceWithDetails
-
-
+    from langfuse.api.resources.commons.types.trace_with_details import TraceWithDetails
 _API_PAGE_SIZE = 100
-
 _LIST_FIELDS = "core"
 
 
 @dataclass
-class LangfuseV3TraceLoader:
-    """Load trace records and full trace details from a detected v3 server."""
+class LangfuseTraceLoader:
+    """Load a bounded selection of complete traces from one Langfuse v3 project.
+
+    Langfuse API credentials identify the project. A client can be injected for
+    tests; otherwise the optional SDK is imported only when this loader runs.
+    """
 
     config: LangfuseTraceConfig
-    client: Langfuse = field(repr=False)
-    base_url: str
+    client: Langfuse | None = field(default=None, repr=False)
     _snapshot: TraceSnapshot = field(
         default_factory=lambda: TraceSnapshot([]), init=False, repr=False
     )
+    _base_url: str | None = field(default=None, init=False, repr=False)
 
     def load(self) -> TraceSnapshot:
         """Select trace summaries, fetch their complete details, and normalize them."""
-        client = self.client
-        base_url = self.base_url
-        selected = self._select_traces()
+
+        base_url = _resolved_base_url(self.config.base_url)
+        client = self.client or _new_langfuse_client(base_url)
+        selected = self._select_traces(client)
 
         traces: list[Trace] = []
         # Query-summary timestamps determine ordering, even if detail timestamps differ.
@@ -76,10 +76,11 @@ class LangfuseV3TraceLoader:
             traces.append(trace)
 
         snapshot = TraceSnapshot(traces)
+        self._base_url = base_url
         self._snapshot = snapshot
         return snapshot
 
-    def _select_traces(self) -> list[TraceWithDetails]:
+    def _select_traces(self, client: Langfuse) -> list[TraceWithDetails]:
         selected: dict[str, TraceWithDetails] = {}
         page = 1
         page_size = min(self.config.max_traces, _API_PAGE_SIZE)
@@ -90,7 +91,7 @@ class LangfuseV3TraceLoader:
         )
 
         while len(selected) < self.config.max_traces:
-            response = self.client.api.trace.list(
+            response = client.api.trace.list(
                 page=page,
                 limit=page_size,
                 from_timestamp=self.config.from_timestamp,
@@ -116,4 +117,43 @@ class LangfuseV3TraceLoader:
 
     def describe(self) -> LangfuseTraceDescription:
         """Describe the configured source and most recently loaded corpus."""
-        return _describe_live_source(self.config, self.base_url, "v3", self._snapshot)
+
+        base_url = self._base_url or _resolved_base_url(self.config.base_url)
+        return {
+            **_describe_corpus(f"langfuse:{base_url}", self._snapshot),
+            "base_url": base_url,
+            "filter": self.config.filter_string,
+            "from_timestamp": self.config.from_timestamp.isoformat(),
+            "to_timestamp": self.config.to_timestamp.isoformat(),
+            "max_traces": self.config.max_traces,
+        }
+
+
+def _new_langfuse_client(base_url: str) -> Langfuse:
+    try:
+        from langfuse import Langfuse
+    except ImportError as error:
+        raise ModuleNotFoundError(
+            "Langfuse support is not installed; install the project with the 'langfuse' extra"
+        ) from error
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    if not public_key or not secret_key:
+        raise LangfuseTraceLoadError(
+            "Langfuse loading requires LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY"
+        )
+    return Langfuse(
+        public_key=public_key,
+        secret_key=secret_key,
+        base_url=base_url,
+        tracing_enabled=False,
+    )
+
+
+def _resolved_base_url(configured: str | None) -> str:
+    base_url = configured or os.environ.get("LANGFUSE_BASE_URL")
+    if not base_url:
+        raise LangfuseTraceLoadError(
+            "Langfuse v3 loading requires trace.langfuse.base_url or LANGFUSE_BASE_URL"
+        )
+    return base_url

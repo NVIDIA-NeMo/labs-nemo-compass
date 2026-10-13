@@ -34,7 +34,7 @@ from trace_ingest.loaders.gym import GymTraceLoader
 
 from insight_agent.cli.output import RunOutput, RunResult, display_name
 from insight_agent.compass_signals.builtins import registered_builtin_signals
-from insight_agent.compass_signals.compass_signals import CompassSignalResult
+from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.config import CompassSignalsConfig, RunConfig, TraceConfig
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.insights_generation.confidence import InsightConfidence
@@ -48,6 +48,7 @@ from insight_agent.insights_generation.config import (
 from insight_agent.insights_generation.defaults import DEFAULT_MAX_TOKENS, DEFAULT_MODEL
 from insight_agent.insights_generation.insight_compilation import InsightCompilation
 from insight_agent.insights_generation.validation import ProblemValidation
+from insight_agent.telemetry import span, telemetry_session
 from insight_agent.trace_loaders.atif import ATIFTraceLoader
 from insight_agent.trace_loaders.braintrust import (
     BRAINTRUST_DEFAULT_MAX_TRACES,
@@ -58,12 +59,10 @@ from insight_agent.trace_loaders.fs import FSDataLoader
 from insight_agent.trace_loaders.intake import IntakeTraceLoader
 from insight_agent.trace_loaders.langfuse import (
     LANGFUSE_DEFAULT_MAX_TRACES,
+    LangfuseFileTraceConfig,
+    LangfuseFileTraceLoader,
     LangfuseTraceConfig,
     LangfuseTraceLoader,
-    LangfuseV3FileTraceConfig,
-    LangfuseV3FileTraceLoader,
-    LangfuseV4FileTraceConfig,
-    LangfuseV4FileTraceLoader,
 )
 from insight_agent.trace_loaders.langsmith import (
     LANGSMITH_DEFAULT_MAX_TRACES,
@@ -172,22 +171,10 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
                 max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
             )
         )
-    if config.langfuse_trace_export_file is not None:
-        source = config.langfuse_trace_export_file
-        if source.api_version == "v4":
-            assert source.observations_path is not None
-            return LangfuseV4FileTraceLoader(
-                LangfuseV4FileTraceConfig(
-                    observations_path=source.observations_path,
-                    scores_path=source.scores_path,
-                    base_url=source.base_url,
-                    max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
-                )
-            )
-        assert source.path is not None
-        return LangfuseV3FileTraceLoader(
-            LangfuseV3FileTraceConfig(
-                path=source.path,
+    if config.langfuse_export is not None:
+        return LangfuseFileTraceLoader(
+            LangfuseFileTraceConfig(
+                path=config.langfuse_export.path,
                 max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
             )
         )
@@ -258,7 +245,10 @@ async def _run_compass_signals(
             changed()
 
         try:
-            return await registry.analyze(name, snapshot, on_start=started)
+            with span(f"evidence.{name}") as record:
+                result = await registry.analyze(name, snapshot, on_start=started)
+                record.set_output(result)
+                return result
         finally:
             if name in active:
                 active.remove(name)
@@ -283,13 +273,22 @@ async def _validate_evidence_with_code(
         raise ValueError(f"code_base must be an existing directory: {code_base_path}")
     validator = ProblemValidation(code_base_path, llm)
 
+    async def validate_problem(
+        problem: Problem, supporting_traces: tuple[Trace, ...]
+    ) -> bool | None:
+        with span("validate_problem") as record:
+            record.set_input({"problem": problem, "code_base": str(code_base_path)})
+            decision = await validator.is_supported(problem, supporting_traces)
+            record.set_output({"supported": decision})
+            return decision
+
     async def validate_result(result: CompassSignalResult) -> CompassSignalResult:
         validations = []
         for problem in result.problems:
             supporting_traces = tuple(
                 snapshot.get_trace_by_id(trace_id) for trace_id in problem.supporting_trace_ids
             )
-            validations.append(validator.is_supported(problem, supporting_traces))
+            validations.append(validate_problem(problem, supporting_traces))
 
         decisions = await asyncio.gather(*validations)
         retained_problems = tuple(
@@ -359,7 +358,14 @@ def _build_llm(config: RunConfig, api_key: str) -> CompletionClient:
 async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
     api_key = _check_environment(config)
     async with output.progress():
-        snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
+        with span("ingestion") as record:
+            record.set_input(config.trace)
+            snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
+            if record.is_recording():
+                for index, trace in enumerate(snapshot):
+                    with span("input_trace") as input_record:
+                        input_record.set_input({"index": index, "trace": trace})
+            record.set_output({"trace_count": len(snapshot)})
         output.trace_count = len(snapshot)
         output.activity = "Checking prerequisites"
 
@@ -417,12 +423,16 @@ async def _compile_evidence(
         if not any(item.problems for item in evidence):
             return result.existing_insights
         output.activity = "Reviewing candidate issues for actionable insights"
-        return await InsightCompilation(llm=llm).compile_insights(
-            evidence,
-            snapshot,
-            result.existing_insights,
-            run_timestamp,
-        )
+        with span("compilation") as record:
+            record.set_input({"evidence": evidence, "existing_insights": result.existing_insights})
+            insights = await InsightCompilation(llm=llm).compile_insights(
+                evidence,
+                snapshot,
+                result.existing_insights,
+                run_timestamp,
+            )
+            record.set_output({"insights": insights})
+            return insights
 
 
 def _render_insights(insights: Sequence[Insight]) -> str:
@@ -481,13 +491,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = RunOutput(Console(stderr=True, markup=False, highlight=False))
     try:
         config = get_config(argv)
-        result = asyncio.run(_generate_insights(config, output))
-        rendered = _render_insights(result.insights)
-        if result.insights:
-            _write_insights(config.output_path, rendered)
-        if config.output_path == Path("-") or not sys.stdout.isatty():
-            print(rendered, end="")
-        output.report(result, config.output_path)
+        _check_environment(config)
+        with telemetry_session(config) as record:
+            result = asyncio.run(_generate_insights(config, output))
+            rendered = _render_insights(result.insights)
+            if result.insights:
+                _write_insights(config.output_path, rendered)
+            if config.output_path == Path("-") or not sys.stdout.isatty():
+                print(rendered, end="")
+            output.report(result, config.output_path)
+            record.set_output(
+                {
+                    "trace_count": result.trace_count,
+                    "insights": result.insights,
+                    "rejected_by_code": result.rejected_by_code,
+                },
+            )
         return EXIT_OK
     except SetupError as error:
         output.console.print(str(error), soft_wrap=True)
