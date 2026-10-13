@@ -9,8 +9,9 @@ description: Export Langfuse v3 or v4 traces to the Python SDK JSONL format Comp
 
 Read the authoritative Python examples in
 [the Langfuse export guide](../../../docs/sources/langfuse.md#use-an-export).
-Run them from the repository root with its pinned Langfuse SDK and the user's
-environment file. Adapt the date window, filters, and output path to the request.
+The commands supply their own pinned SDK and work from any directory. Use the
+user's environment file and adapt the date window, filters, and output path.
+For local validation, use a Compass installation with the `langfuse` extra.
 
 - Use the deployment's server version, not the installed SDK version. If unknown,
   read `client.api.health.health().version`; the project API keys select the project.

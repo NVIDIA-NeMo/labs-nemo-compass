@@ -12,7 +12,14 @@ the v3 trace API for server releases 3.x or the observations-based path for 4.x.
 
 ## Connect and run
 
-With [uv and Git installed](../../README.md#start-here), install the CLI with Langfuse support:
+Install Compass with the `langfuse` extra. Once the PyPI release is available:
+
+```bash
+python -m pip install 'insight-agent[langfuse]'
+```
+
+Until then, install directly from GitHub with [uv and Git](../../README.md#start-here).
+This does not require a local checkout:
 
 ```bash
 uv tool install \
@@ -101,19 +108,28 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-From a repository checkout, use these Python SDK examples to create the JSONL
-format Compass reads. The repository pins Langfuse SDK 4.17.0, which supports both
-server versions. Set `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and
-`LANGFUSE_SECRET_KEY` in `.env`, and adjust the dates and output filename below.
-Your coding agent can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md)
-to do this for you.
+Run these examples from any working directory with [uv installed](https://docs.astral.sh/uv/getting-started/installation/).
+Each command supplies Langfuse SDK 4.17.0 independently of your Compass installation;
+no repository checkout is needed. The SDK supports both server versions.
+
+Create a `.env` file in that directory:
+
+```dotenv
+LANGFUSE_BASE_URL=https://langfuse.example.com
+LANGFUSE_PUBLIC_KEY=your-public-key
+LANGFUSE_SECRET_KEY=your-secret-key
+```
+
+Choose the example for your server version and adjust its dates and output filename.
+If you have a checkout, your coding agent can also use the optional
+[export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
 
 ### Langfuse v3
 
 Fetch every matching trace, then its full details including observations and scores:
 
 ```bash
-uv run --extra langfuse --env-file .env python - <<'PYTHON'
+uv run --no-project --with langfuse==4.17.0 --env-file .env python - <<'PYTHON'
 from datetime import datetime
 from itertools import count
 from langfuse import Langfuse
@@ -140,7 +156,7 @@ Group the observations in the window by trace and fetch each trace's scores.
 Scores are not time-filtered, so later evaluations are included.
 
 ```bash
-uv run --extra langfuse --env-file .env python - <<'PYTHON'
+uv run --no-project --with langfuse==4.17.0 --env-file .env python - <<'PYTHON'
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -208,8 +224,9 @@ trace:
 
 For v3, use `api_version: v3`, `path: langfuse-v3.jsonl`, and omit `base_url`.
 For v4, `base_url` is optional and enables links back to Langfuse.
-Rerun `insight-agent --config config.yaml`. Offline loading does not contact
-Langfuse; analysis still needs your inference credentials.
+Run `insight-agent --config config.yaml` from the directory containing your config
+and export. Compass must be installed with the `langfuse` extra, including for
+offline loading. Analysis still needs your [inference credentials](../model-access.md#choose-a-model).
 
 Each v3 line is a full SDK trace-detail record. Each v4 line contains `trace_id`,
 `observations`, and `scores` (an empty list is valid). Preserve
