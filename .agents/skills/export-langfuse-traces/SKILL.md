@@ -23,8 +23,8 @@ Compass installed with the `langfuse` extra.
   `--all --json`. Keep their native response envelopes unchanged. Scores are
   project-wide so later evaluations remain available; Compass attaches relevant
   scores and reports skipped unrelated or ambiguous subjects.
-- Retain time bounds on v4 observations. Filters select steps, not whole traces;
-  explain when the query or window can omit other steps. Do not silently broaden
+- Retain time bounds on v4 observations. Filters select observations, not whole traces;
+  explain when the query or window can omit other observations. Do not silently broaden
   the requested selection.
 - Use unused output paths. Failed or truncated exports are not usable. For v4, CLI
   `--all` defaults to 1,000 items and has a 100-request ceiling; increase its item

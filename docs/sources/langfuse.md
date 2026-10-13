@@ -6,6 +6,10 @@
 Compass supports Langfuse v3 and v4, automatically detecting the version for live
 connections. Trace and observation scores are included automatically.
 
+Langfuse v4 moved from a trace-centric to an observation-centric model: its
+[Observations API](https://langfuse.com/docs/api-and-data-platform/features/public-api#observations-api-v2)
+returns observations. Compass groups them by `traceId` to reconstruct traces for analysis.
+
 ## Setup
 
 Install with the `langfuse` extra, then [configure your inference model and key](../model-access.md#choose-a-model).
@@ -49,14 +53,14 @@ Both timestamps are required, with a timezone: start inclusive, end exclusive.
 Selection differs by version:
 
 - **V3:** filters select traces; Compass fetches their full details.
-- **V4:** filters select observations; Compass fetches the other steps in each matching
-  trace **within the same window**. Steps outside it are excluded, and costs and latency
-  reflect only loaded steps. Widen the window when you need the whole execution.
+- **V4:** filters select observations; Compass fetches all observations for their trace IDs
+  **within the same window**. Observations outside it are excluded; costs and latency
+  reflect only loaded observations. Widen the window when you need complete traces.
 
 Use your version's [v3 trace](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces)
 or [v4 observation](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations)
-filter syntax. For example, `name` means trace name in v3 and step name in v4;
-use `traceName` for v4 trace names. V4 automatically fetches up to four traces
+filter syntax. For example, `name` means trace name in v3 and observation name in v4;
+use `traceName` for v4 trace names. Compass fetches v4 observations for up to four trace IDs
 concurrently and batches score requests; no tuning is needed.
 
 For tool-schema checks, record definitions in `input.tools` on generation observations.
@@ -122,7 +126,8 @@ langfuse --env .env --api-version 4 api scores list \
 
 Keep both responses unchanged. Compass rejects truncated exports: `--all` defaults
 to 1,000 items and at most 100 requests. Increase `--max-items` / `--limit` or narrow
-the query if needed. Observation filters and dates can omit other steps in a trace.
+the query if needed. Observation filters and dates can exclude observations
+belonging to the same trace.
 
 Replace your config's `trace` section with:
 
