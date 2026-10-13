@@ -13,10 +13,9 @@ An illustrative entry in `insights.yml`:
   description: >-
     After lookup_order reports an unknown order ID, the agent repeats
     the same request without asking the customer to correct the ID.
-  severity: medium
+  severity: med
   severity_reason: >-
-    Wastes a retry on every bad order ID instead of asking
-    the customer to fix it.
+    The agent completes the task only after an unnecessary retry.
   evidence:
     - trace_id: run-12
       url: https://observability.example.com/traces/run-12
@@ -25,21 +24,7 @@ An illustrative entry in `insights.yml`:
           url: https://observability.example.com/spans/lookup-3
     - trace_id: run-38
       url: https://observability.example.com/traces/run-38
-
 ```
-
-`severity` is one of `low`, `medium`, or `high`, with `severity_reason` giving a short,
-plain-language reason for that bucket:
-
-- **high** — the agent goes off track, behaves harmfully or against its ETHOS.md, or is
-  blocked from completing its task. Fix right away.
-- **medium** — the agent completes its task but burns tokens or other resources, takes a
-  roundabout path, or hits tool errors it recovers from. Worth fixing, not urgent.
-- **low** — a minor or cosmetic issue that doesn't change the outcome for the user. Fix
-  whenever convenient.
-
-Insights saved before this field existed may have `severity` and `severity_reason` unset
-until the next run reconciles them.
 
 Open a trace link to review the supporting behavior before deciding what to change.
 Each `evidence` entry identifies a supporting trace and optionally its relevant spans.
@@ -121,9 +106,12 @@ The output is a YAML list with `name`, `description`, `evidence`, and optional
 `updated_date`, `severity`, `severity_reason`, and `confidence` for each insight.
 Each insight has at least two supporting traces. Empty spans and absent URLs are omitted.
 
-`severity` describes the consequence using `low`, `medium`, or `high`, and
-`severity_reason` explains the choice in one sentence. Final compilation fills both
-fields for new and existing insights. Severity does not depend on trace count or confidence.
+`severity` describes observed consequence after recovery: `low`, `med`, or `high`.
+Final compilation assigns it to new insights by default; it is omitted when the
+outcome is unknown. It does not depend on trace count or confidence.
+`severity_reason` states the observed consequence behind the rating in one short
+sentence. It is omitted when severity is unknown; existing insights retain saved reasons.
+Compilation may fill a missing reason for an existing insight with a severity rating.
 
 `confidence` describes how well source investigation supports the insight's
 behavior, root cause, scope, and implied remediation. It is set when

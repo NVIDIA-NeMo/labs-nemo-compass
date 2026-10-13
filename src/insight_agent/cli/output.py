@@ -33,7 +33,7 @@ _SKIP_LABELS = {
     "No embedding backend configured": "no embedding backend",
 }
 _LOG_INTERVAL = 10
-_SEVERITY_STYLES = {"high": "bold red", "medium": "bold yellow", "low": "bold cyan"}
+_SEVERITY_STYLES = {"high": "bold red", "med": "bold yellow", "low": "bold cyan"}
 
 
 def display_name(name: str) -> str:

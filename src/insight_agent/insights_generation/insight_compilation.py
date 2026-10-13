@@ -242,9 +242,10 @@ class InsightCompilation(Agent):
 
         Preserve each existing insight's id exactly. Never invent an id or
         assign an existing id to a new insight; new insights have id=None.
-        Existing insights should never be removed or modified, but you can
-        update the evidence on existing insights to match new traces you
-        identified. Keep existing references, including those outside this snapshot.
+        Existing insights should never be removed or modified, except that you
+        can update their evidence to match new traces you identified and fill
+        a missing severity_reason as described below. Keep existing references,
+        including those outside this snapshot.
         When you merge insights, check that added references support the merged
         claim. Merge evidence by trace ID. Do not copy every candidate into evidence.
 
@@ -255,28 +256,28 @@ class InsightCompilation(Agent):
         leave its updated_date exactly as given, including leaving it unset
         if it was already unset -- never invent one and never clear one.
 
-        After merging findings, assign severity to every new insight and any
-        existing insight missing it. Base the rating on the observed consequence
-        in its supporting traces, including recovery:
+        After merging findings, assign severity to each new insight based on
+        the observed consequence in its supporting traces, including recovery:
         - high: the agent fails its primary task, silently loses state, or
           produces materially incorrect user-visible output without recovery.
-        - medium: the agent completes the task but incurs unnecessary turns,
+        - med: the agent completes the task but incurs unnecessary turns,
           delay, partial recovery, or degraded output quality.
         - low: minor inconvenience or cosmetic impact with no meaningful
           degradation of the completed task.
-        When the task outcome is unknown, rate only the consequence established
-        by the traces; do not infer task failure from an error alone.
+        Leave severity=None when the traces do not establish the outcome.
         Judge consequence independently of occurrence count and confidence;
         do not reduce a severe consequence because it occurs in few traces.
         Use the merged supporting evidence, not just the failing span. Source
-        code access is not required. Preserve existing severity ratings.
+        code access is not required. Preserve existing insights' ratings.
 
-        Add severity_reason to every new insight and any existing insight
-        missing it. Explain the rating in one short, plain sentence. Do not
-        rewrite an existing reason or claim an unobserved task outcome.
+        For each new insight with a severity rating, add severity_reason as one
+        short, plain sentence stating the observed consequence that supports
+        the rating. You may also fill a missing severity_reason on an existing
+        insight with a severity rating. Leave severity_reason=None when severity
+        is unknown. Preserve existing ratings and reasons; never invent an
+        unobserved task outcome.
 
         Leave confidence=None on new insights; an optional code review sets it.
-        Preserve existing confidence ratings.
 
         When inspecting supporting traces, record the specific relevant Span.id values
         in evidence[].spans as span_id, grouped by trace_id. A trace may have several supporting spans
