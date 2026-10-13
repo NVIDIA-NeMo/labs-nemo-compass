@@ -28,6 +28,7 @@ LANGFUSE_SECRET_KEY=your-secret-key
 Save as `config.yaml`, adjusting the dates and optional filter:
 
 ```yaml
+output_path: insights.yml
 trace:
   max_traces: 100
   langfuse:
