@@ -139,11 +139,13 @@ Replace your config's `trace` section with the printed path:
 trace:
   max_traces: 100
   langfuse_export:
+    api_version: v3
     path: ./langfuse-v3.EXAMPLE/traces.jsonl
 ```
 
-V3 is the default export format. Complete raw API trace-detail records and CLI
-response envelopes are accepted; trace-list summaries are not. Point at
+Set `api_version` explicitly to `v3` or `v4`; there is no default. For v3, use
+`traces get` to export each complete trace with its observations and scores.
+The output of `traces list` alone is not sufficient. Point at
 `traces.jsonl`, not the directory containing `selection.json`.
 
 ### Langfuse v4

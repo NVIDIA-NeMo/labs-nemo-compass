@@ -4,6 +4,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from insight_agent.config import CompassSignalsConfig, RunConfig
 
 
@@ -86,12 +89,13 @@ def test_yaml_accepts_code_base(tmp_path: Path) -> None:
 def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:
     config_path = tmp_path / "analyst.yaml"
     config_path.write_text(
-        "trace:\n  langfuse_export:\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
+        "trace:\n  langfuse_export:\n    api_version: v3\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
         encoding="utf-8",
     )
     config = RunConfig(_cli_parse_args=["--config", str(config_path), "--trace.max-traces", "200"])
     assert config.trace.langfuse_export is not None
     assert config.trace.langfuse_export.path == Path("exports")
+    assert config.trace.langfuse_export.api_version == "v3"
     assert config.trace.max_traces == 200
 
 
@@ -144,3 +148,19 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
     assert config.compass_signals.tool_issues.retry_threshold == 5
     assert config.compass_signals.anomaly_and_patterns is not None
     assert config.compass_signals.grader_failure_patterns is not None
+
+
+@pytest.mark.parametrize("source", ["yaml", "cli"])
+def test_langfuse_export_requires_api_version(tmp_path: Path, source: str) -> None:
+    if source == "yaml":
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("trace:\n  langfuse_export:\n    path: exports\n")
+        args = ["--config", str(config_path)]
+    else:
+        args = ["--trace.langfuse-export.path", "exports"]
+    with pytest.raises(ValidationError) as error:
+        RunConfig(_cli_parse_args=args)
+    assert any(
+        item["loc"] == ("trace", "langfuse_export", "api_version") and item["type"] == "missing"
+        for item in error.value.errors()
+    )

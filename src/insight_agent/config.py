@@ -80,10 +80,10 @@ class MLflowExportConfig(ConfigModel):
 
 
 class LangfuseExportConfig(ConfigModel):
-    """Settings for native Langfuse CLI exports; v3 remains the default."""
+    """Settings for Langfuse CLI exports with an explicit API version."""
 
     path: Path
-    api_version: Literal["v3", "v4"] = "v3"
+    api_version: Literal["v3", "v4"]
     scores_path: Path | None = None
     base_url: str | None = None
 

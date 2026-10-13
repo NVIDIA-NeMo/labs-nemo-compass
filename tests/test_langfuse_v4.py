@@ -614,7 +614,7 @@ def test_v4_file_empty_response_and_config(tmp_path):
     with pytest.raises(ValueError, match="max_traces"):
         LangfuseV4FileTraceConfig(path, max_traces=0)
     with pytest.raises(ValueError, match="require"):
-        LangfuseExportConfig(path=path, scores_path=path)
+        LangfuseExportConfig(path=path, api_version="v3", scores_path=path)
 
 
 @pytest.mark.parametrize("case", ["duplicate", "wrong_project", "unassociated"])
