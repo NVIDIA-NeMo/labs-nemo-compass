@@ -8,7 +8,7 @@ from insight_agent.config import CompassSignalsConfig, RunConfig
 
 
 def test_cli_nested_override_preserves_yaml_siblings(tmp_path: Path) -> None:
-    config_path = tmp_path / "analyst.yaml"
+    config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """
 trace:
@@ -72,7 +72,7 @@ def test_cli_accepts_optional_code_base() -> None:
 
 
 def test_yaml_accepts_code_base(tmp_path: Path) -> None:
-    config_path = tmp_path / "analyst.yaml"
+    config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "trace:\n  filesystem:\n    path: traces.jsonl\ncode_base: ../my-agent\n",
         encoding="utf-8",
@@ -84,7 +84,7 @@ def test_yaml_accepts_code_base(tmp_path: Path) -> None:
 
 
 def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:
-    config_path = tmp_path / "analyst.yaml"
+    config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "trace:\n  langfuse_export:\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
         encoding="utf-8",
