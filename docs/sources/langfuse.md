@@ -101,115 +101,118 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-Compass supports command-line exports from Langfuse v3 and v4. The examples below
-use the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-with Node.js, `uv`, and `jq` installed. Add `LANGFUSE_BASE_URL` to `.env` alongside
-your project keys, and adjust the dates. Each example creates a new export directory and checks that the query returned data.
-Your coding agent can run these same commands for you.
+From a repository checkout, use these Python SDK examples to create the JSONL
+format Compass reads. The repository pins Langfuse SDK 4.17.0, which supports both
+server versions. Set `LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and
+`LANGFUSE_SECRET_KEY` in `.env`, and adjust the dates and output filename below.
+Your coding agent can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md)
+to do this for you.
 
 ### Langfuse v3
 
-Export the matching trace IDs, then fetch each complete trace with its observations
-and scores. The explicit API version selects the CLI's v3 commands for self-hosted
-v3 deployments.
+Fetch every matching trace, then its full details including observations and scores:
 
 ```bash
-set -euo pipefail
-export_dir=$(mktemp -d ./langfuse-v3.XXXXXX)
+uv run --extra langfuse --env-file .env python - <<'PYTHON'
+from datetime import datetime
+from itertools import count
+from langfuse import Langfuse
 
-uv run --no-project --env-file .env -- npx --yes @langfuse/cli@1.2.4 \
-  --api-version 3 api traces list \
-  --from-timestamp 2026-09-01T00:00:00Z \
-  --to-timestamp 2026-09-02T00:00:00Z \
-  --limit 100 --all --max-items 10000 --json > "$export_dir/selection.json"
-jq -e '.status == 200 and .body.meta.truncated == false and (.body.data | length) > 0' \
-  "$export_dir/selection.json" >/dev/null
-
-jq -r '.body.data[].id' "$export_dir/selection.json" |
-while IFS= read -r trace_id; do
-  uv run --no-project --env-file .env -- npx --yes @langfuse/cli@1.2.4 \
-    --api-version 3 api traces get "$trace_id" --json
-done > "$export_dir/traces.jsonl"
-echo "$export_dir/traces.jsonl"
+client = Langfuse(tracing_enabled=False)
+start = datetime.fromisoformat("2026-09-01T00:00:00+00:00")
+end = datetime.fromisoformat("2026-09-02T00:00:00+00:00")
+with open("langfuse-v3.jsonl", "x", encoding="utf-8") as output:
+    for page in count(1):
+        result = client.api.trace.list(
+            from_timestamp=start, to_timestamp=end, page=page, limit=100,
+        )
+        for trace in result.data:
+            detail = client.api.trace.get(trace.id)
+            output.write(detail.json(exclude_unset=True) + "\n")
+        if page >= result.meta.total_pages:
+            break
+PYTHON
 ```
-
-Replace your config's `trace` section with the printed path:
-
-```yaml
-trace:
-  max_traces: 100
-  langfuse_export:
-    api_version: v3
-    path: ./langfuse-v3.EXAMPLE/traces.jsonl
-```
-
-Set `api_version` explicitly to `v3` or `v4`; there is no default. For v3, use
-`traces get` to export each complete trace with its observations and scores.
-The output of `traces list` alone is not sufficient. Point at
-`traces.jsonl`, not the directory containing `selection.json`.
 
 ### Langfuse v4
 
-Export observations with the fields needed for analysis. The CLI combines all pages
-into one response envelope; keep that envelope so Compass can detect truncation.
+Group the observations in the window by trace and fetch each trace's scores.
+Scores are not time-filtered, so later evaluations are included.
 
 ```bash
-set -euo pipefail
-export_dir=$(mktemp -d ./langfuse-v4.XXXXXX)
+uv run --extra langfuse --env-file .env python - <<'PYTHON'
+import json
+from collections import defaultdict
+from datetime import datetime
+from langfuse import Langfuse
 
-uv run --no-project --env-file .env -- npx --yes @langfuse/cli@1.2.4 \
-  --api-version 4 api observations list \
-  --from-start-time 2026-09-01T00:00:00Z \
-  --to-start-time 2026-09-02T00:00:00Z \
-  --fields core,basic,io,metadata,model,usage,prompt,trace_context \
-  --limit 1000 --all --max-items 100000 --json > "$export_dir/observations.json"
-jq -e '.status == 200 and .body.meta.truncated == false and (.body.data | length) > 0' \
-  "$export_dir/observations.json" >/dev/null
+client = Langfuse(tracing_enabled=False)
+start = datetime.fromisoformat("2026-09-01T00:00:00+00:00")
+end = datetime.fromisoformat("2026-09-02T00:00:00+00:00")
 
-# Optional: include scores for the exported traces, including later evaluations.
-jq -r '.body.data[].traceId' "$export_dir/observations.json" | sort -u |
-while IFS= read -r trace_id; do
-  uv run --no-project --env-file .env -- npx --yes @langfuse/cli@1.2.4 \
-    --api-version 4 api scores list --trace-id "$trace_id" \
-    --fields details,subject,annotation \
-    --limit 100 --all --max-items 10000 --json
-done > "$export_dir/scores.jsonl"
-jq -e -s 'all(.[]; .status == 200 and .body.meta.truncated == false)' \
-  "$export_dir/scores.jsonl" >/dev/null
-echo "$export_dir"
+def records(fetch, **kwargs):
+    cursor = None
+    while True:
+        result = fetch(limit=100, cursor=cursor, **kwargs)
+        yield from result.data
+        cursor = result.meta.cursor
+        if not cursor:
+            break
+
+def serialize(item):
+    return json.loads(item.json(exclude_unset=True))
+
+with open("langfuse-v4.jsonl", "x", encoding="utf-8") as output:
+    traces = defaultdict(list)
+    for observation in records(
+        client.api.observations.get_many,
+        from_start_time=start, to_start_time=end,
+        fields="core,basic,io,metadata,model,usage,prompt,trace_context",
+    ):
+        traces[observation.trace_id].append(serialize(observation))
+    for trace_id, observations in traces.items():
+        scores = records(
+            client.api.scores_v3.get_many_v3, trace_id=trace_id,
+            fields="details,subject,annotation",
+        )
+        output.write(json.dumps({
+            "trace_id": trace_id,
+            "observations": observations,
+            "scores": [serialize(score) for score in scores],
+        }) + "\n")
+PYTHON
 ```
 
-Use the printed directory in your config:
+You can add SDK filters to the listing calls. V3 filters select traces; v4 filters
+select individual observations and do not automatically include other steps of
+those traces. The v4 window can also cut across executions. Choose a window and
+filters covering the steps you want analyzed; absent steps cannot be recovered
+from an export.
+
+Both examples refuse to overwrite an existing file. If an export fails, discard
+the incomplete file before retrying. They follow pagination to completion; v4
+holds the selected observations in memory while grouping them.
+
+### Analyze the file
+
+Replace your config's `trace` section, choosing the version and file you exported:
 
 ```yaml
 trace:
   max_traces: 100
   langfuse_export:
     api_version: v4
-    path: ./langfuse-v4.EXAMPLE/observations.json
-    scores_path: ./langfuse-v4.EXAMPLE/scores.jsonl
+    path: langfuse-v4.jsonl
     base_url: https://langfuse.example.com
 ```
 
-`scores_path` is optional. `base_url` is optional and enables links back to Langfuse.
-V4 accepts successful CLI `--json` response envelopes: one per JSON file or one per
-line in JSONL. Use `--all`; unfinished cursor pages and truncated exports are rejected.
+For v3, use `api_version: v3`, `path: langfuse-v3.jsonl`, and omit `base_url`.
+For v4, `base_url` is optional and enables links back to Langfuse.
+Rerun `insight-agent --config config.yaml`. Offline loading does not contact
+Langfuse; analysis still needs your inference credentials.
 
-The export contains only the observations matching your query. Unlike the live
-loader, it does not expand selected steps into their other trace steps. Filters on
-observation name, type, or root status can exclude useful evidence, and time windows
-can cut across executions. Choose the window and filters accordingly.
-
-### Export limits
-
-The CLI's `--all` defaults to 1,000 items and stops after at most 100 requests.
-The examples set explicit item limits and check for nonempty, untruncated results.
-If no records match, choose a different window. If the export is truncated, use
-smaller time windows in separate files. Preserve whole CLI responses
-rather than extracting their `data` arrays for v4.
-
-Both loaders also accept directories of immediate `.json` and `.jsonl` files in
-their supported format. Duplicate records are rejected, so avoid overlapping
-exports. UI downloads, CSV, and blob-storage exports are outside this workflow.
-Rerun `insight-agent --config config.yaml` to analyze the local files; loading them
-requires no Langfuse connection, only your inference credentials for analysis.
+Each v3 line is a full SDK trace-detail record. Each v4 line contains `trace_id`,
+`observations`, and `scores` (an empty list is valid). Preserve
+`exclude_unset=True` when serializing to distinguish missing values from explicit
+nulls. Only these JSONL formats are supported, not CLI response envelopes, UI
+exports, directories, or separate score files.

@@ -6,6 +6,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from itertools import count
+from pathlib import Path
 
 import httpx
 import pytest
@@ -331,7 +332,7 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_signals, offline):
     ]
     if offline:
         export_path = tmp_path / "observations.json"
-        export_path.write_text(json.dumps(cli_export([tool, observation("root")])))
+        export_path.write_text(json.dumps(sdk_export([tool, observation("root")])))
         source_args = [
             "--trace.langfuse-export.path",
             str(export_path),
@@ -461,14 +462,18 @@ def test_version_specific_loaders_do_not_detect_again(loader_type):
     assert instance.describe()["trace_count"] == 0
 
 
-def cli_export(data, **meta):
+def sdk_export(observations, scores=(), trace_id="t"):
+    # Match the documented SDK serialization, preserving omitted fields.
+    from langfuse.api.commons.types.observation_v2 import ObservationV2
+    from langfuse.api.core.pydantic_utilities import parse_obj_as
+    from langfuse.api.scores_v3.types.score_v3 import ScoreV3
+
     return {
-        "status": 200,
-        "headers": {},
-        "body": {
-            "data": data,
-            "meta": {"pages": 1, "fetchedItems": len(data), "truncated": False, **meta},
-        },
+        "trace_id": trace_id,
+        "observations": [
+            json.loads(parse_obj_as(ObservationV2, obs).json()) for obs in observations
+        ],
+        "scores": [json.loads(score.json()) for score in parse_obj_as(list[ScoreV3], scores)],
     }
 
 
@@ -489,35 +494,44 @@ def exported_score(id, subject, **extra):
     )
 
 
-@pytest.mark.parametrize("jsonl", [False, True])
-def test_v4_file_matches_online_without_network(tmp_path, monkeypatch, jsonl):
+def test_documented_v4_export_matches_online_with_paginated_scores(tmp_path, monkeypatch):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
     items = [
         observation("child", parent="root", output="null", totalCost=0.12),
         observation("root"),
     ]
-    scores = [exported_score("score", {"kind": "observation", "id": "child", "traceId": "t"})]
+    scores = [
+        exported_score("s1", {"kind": "observation", "id": "child", "traceId": "t"}),
+        exported_score("s2", {"kind": "trace", "id": "t"}),
+    ]
 
     def handler(request):
+        data = scores if request.url.path.endswith("/v3/scores") else items
         return httpx.Response(
-            200, json=page(scores if request.url.path.endswith("/v3/scores") else items)
+            200,
+            json=(page(data[1:]) if request.url.params.get("cursor") else page(data[:1], "next")),
         )
 
-    live = next(iter(loader(handler).load()))
+    online_loader = loader(handler)
+    live = next(iter(online_loader.load()))
+    # Execute the actual documented exporter through the SDK's HTTP parser.
+    doc = Path(__file__).resolve().parents[1] / "docs/sources/langfuse.md"
+    code = (
+        doc.read_text()
+        .split("### Langfuse v4", 1)[1]
+        .split("<<'PYTHON'\n", 1)[1]
+        .split("\nPYTHON", 1)[0]
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("langfuse.Langfuse", lambda **kw: online_loader.client)
+    exec(compile(code, str(doc), "exec"), {})
     monkeypatch.setattr(
         Langfuse, "__init__", lambda *a, **kw: pytest.fail("offline constructed a client")
     )
-    path = tmp_path / ("observations.jsonl" if jsonl else "observations.json")
-    path.write_text(
-        "\n".join(json.dumps(cli_export([item])) for item in items)
-        if jsonl
-        else json.dumps(cli_export(items))
-    )
-    score_path = tmp_path / "scores.json"
-    score_path.write_text(json.dumps(cli_export(scores)))
+    path = tmp_path / "langfuse-v4.jsonl"
     instance = LangfuseV4FileTraceLoader(
-        LangfuseV4FileTraceConfig(path, scores_path=score_path, base_url="https://langfuse.test")
+        LangfuseV4FileTraceConfig(path, base_url="https://langfuse.test")
     )
     offline = next(iter(instance.load()))
     live.attributes.pop("observation_window")
@@ -526,26 +540,23 @@ def test_v4_file_matches_online_without_network(tmp_path, monkeypatch, jsonl):
     assert offline.root_spans[0].input is UNSET
     assert offline.root_spans[0].children[0].output is None
     assert instance.describe()["call_count"] == 1
-    assert instance.describe()["ignored_score_count"] == 0
 
 
-def test_v4_file_directory_limits_partial_trees_and_optional_scores(tmp_path):
+def test_v4_file_limits_and_partial_trees(tmp_path):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
-    (tmp_path / "old.json").write_text(json.dumps(cli_export([observation("old", trace_id="old")])))
-    (tmp_path / "new.jsonl").write_text(
-        json.dumps(
-            cli_export(
-                [
-                    observation("orphan", trace_id="new", parent="missing", start=END),
-                ]
-            )
-        )
-    )
-    instance = LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(tmp_path, max_traces=1))
+    path = tmp_path / "traces.jsonl"
+    records = [
+        sdk_export(
+            [observation("orphan", trace_id="new", parent="missing", start=END)], trace_id="new"
+        ),
+        sdk_export([observation("old", trace_id="old")], trace_id="old"),
+    ]
+    path.write_text("\n".join(map(json.dumps, records)))
+    instance = LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path, max_traces=1))
     trace = next(iter(instance.load()))
     assert trace.id == "new"
-    assert trace.source_url == tmp_path.as_uri()
+    assert trace.source_url == path.as_uri()
     assert trace.evaluator_results == {}
     assert instance.describe()["unresolved_parent_count"] == 1
     assert instance.describe()["export_trace_count"] == 2
@@ -555,121 +566,110 @@ def test_v4_file_directory_limits_partial_trees_and_optional_scores(tmp_path):
 @pytest.mark.parametrize(
     "case,match",
     [
-        ("status", "successful CLI"),
-        ("ui", "successful CLI"),
-        ("truncated", "truncated"),
-        ("cursor", "more pages"),
-        ("missing_trace", "traceId"),
-        ("duplicate", "duplicate observation"),
-        ("multiple_projects", "multiple projects"),
+        ("missing_trace", "trace_id"),
+        ("wrong_trace", "traceId"),
+        ("duplicate_trace", "duplicate trace"),
+        ("duplicate_observation", "duplicate observation"),
+        ("multiple_projects", "projectId"),
         ("cycle", "cycle"),
         ("naive_time", "timezone"),
-        ("bad_json", "CLI export"),
+        ("bad_json", "Invalid Langfuse"),
+        ("empty_observations", "observations"),
+        ("missing_scores", "scores"),
     ],
 )
 def test_v4_file_rejects_invalid_exports(tmp_path, case, match):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
-    item = observation("root")
-    envelope = cli_export([item])
-    if case == "status":
-        envelope["status"] = 403
-    elif case == "ui":
-        envelope = item
-    elif case == "truncated":
-        envelope["body"]["meta"]["truncated"] = True
-    elif case == "cursor":
-        envelope["body"]["meta"]["cursor"] = "next"
-    elif case == "missing_trace":
-        item.pop("traceId")
-    elif case == "duplicate":
-        envelope["body"]["data"].append(item)
+    record = sdk_export([observation("root")])
+    item = record["observations"][0]
+    if case == "missing_trace":
+        record.pop("trace_id")
+    elif case == "wrong_trace":
+        item["traceId"] = "other"
+    elif case == "duplicate_observation":
+        record["observations"].append(item)
     elif case == "multiple_projects":
-        other = observation("other", trace_id="other")
+        other = sdk_export([observation("other")])["observations"][0]
         other["projectId"] = "other-project"
-        envelope["body"]["data"].append(other)
+        record["observations"].append(other)
     elif case == "cycle":
         item["parentObservationId"] = "root"
     elif case == "naive_time":
         item["startTime"] = "2026-08-01T00:00:00"
-    path = tmp_path / "observations.json"
-    path.write_text("bad json" if case == "bad_json" else json.dumps(envelope))
+    elif case == "empty_observations":
+        record["observations"] = []
+    elif case == "missing_scores":
+        record.pop("scores")
+    path = tmp_path / "traces.jsonl"
+    text = json.dumps(record)
+    path.write_text(
+        "bad json"
+        if case == "bad_json"
+        else text + ("\n" + text if case == "duplicate_trace" else "")
+    )
     with pytest.raises(LangfuseTraceLoadError, match=match):
         LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path)).load()
 
 
-def test_v4_file_empty_response_and_config(tmp_path):
+def test_v4_file_config_and_empty_file(tmp_path):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
     from insight_agent.config import LangfuseExportConfig
 
-    path = tmp_path / "empty.json"
-    path.write_text(json.dumps(cli_export([])))
+    path = tmp_path / "empty.jsonl"
+    path.write_text("")
     instance = _configured_trace_loader(
         TraceConfig(langfuse_export=LangfuseExportConfig(path=path, api_version="v4"))
     )
     assert isinstance(instance, LangfuseV4FileTraceLoader)
-    assert instance.load().trace_count == 0
-    assert instance.describe()["trace_count"] == 0
+    with pytest.raises(LangfuseTraceLoadError, match="no traces"):
+        instance.load()
     with pytest.raises(ValueError, match="max_traces"):
         LangfuseV4FileTraceConfig(path, max_traces=0)
-    with pytest.raises(ValueError, match="require"):
-        LangfuseExportConfig(path=path, api_version="v3", scores_path=path)
+    with pytest.raises(ValueError, match="requires"):
+        LangfuseExportConfig(path=path, api_version="v3", base_url="https://langfuse.test")
 
 
-@pytest.mark.parametrize("case", ["duplicate", "wrong_project", "unassociated"])
+@pytest.mark.parametrize("case", ["duplicate", "wrong_project", "wrong_trace", "unassociated"])
 def test_v4_file_score_associations(tmp_path, case):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
-    path = tmp_path / "observations.json"
-    path.write_text(json.dumps(cli_export([observation("root")])))
-    score = exported_score("s", {"kind": "observation", "id": "root"})
+    score = exported_score("s", {"kind": "observation", "id": "root", "traceId": "t"})
     scores = [score]
     if case == "duplicate":
         scores.append(score)
     elif case == "wrong_project":
         score["projectId"] = "other"
+    elif case == "wrong_trace":
+        score["subject"]["traceId"] = "other"
     else:
         score["subject"] = {"kind": "session", "id": "unrelated"}
-    score_path = tmp_path / "scores.json"
-    score_path.write_text(json.dumps(cli_export(scores)))
-    instance = LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path, scores_path=score_path))
-    if case == "unassociated":
-        assert next(iter(instance.load())).evaluator_results == {}
-        assert instance.describe()["ignored_score_count"] == 1
-    else:
-        with pytest.raises(LangfuseTraceLoadError, match="score"):
-            instance.load()
+    path = tmp_path / "traces.jsonl"
+    path.write_text(json.dumps(sdk_export([observation("root")], scores)))
+    with pytest.raises(LangfuseTraceLoadError, match="score"):
+        LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path)).load()
 
 
 def test_v4_file_observation_ids_are_scoped_to_traces(tmp_path):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
-    path = tmp_path / "observations.json"
-    path.write_text(
-        json.dumps(
-            cli_export([observation("root", trace_id="a"), observation("root", trace_id="b")])
-        )
-    )
-    score_path = tmp_path / "scores.json"
-    score_path.write_text(
-        json.dumps(
-            cli_export(
-                [
-                    exported_score("s", {"kind": "observation", "id": "root", "traceId": "b"}),
-                    exported_score("ambiguous", {"kind": "observation", "id": "root"}),
-                ]
-            )
-        )
-    )
-    instance = LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path, scores_path=score_path))
-    a, b = list(instance.load())
+    path = tmp_path / "traces.jsonl"
+    records = [
+        sdk_export([observation("root", trace_id="a")], trace_id="a"),
+        sdk_export(
+            [observation("root", trace_id="b")],
+            [exported_score("s", {"kind": "observation", "id": "root"})],
+            trace_id="b",
+        ),
+    ]
+    path.write_text("\n".join(map(json.dumps, records)))
+    a, b = list(LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path)).load())
     assert a.evaluator_results == {}
     records = b.evaluator_results["quality"]
     assert isinstance(records, list)
     assert isinstance(records[0], dict)
     assert records[0]["id"] == "s"
-    assert instance.describe()["ignored_score_count"] == 1
 
 
 @pytest.mark.parametrize(
@@ -684,19 +684,11 @@ def test_v4_file_observation_ids_are_scoped_to_traces(tmp_path):
 def test_v4_file_preserves_score_types(tmp_path, data_type, value):
     from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
-    path = tmp_path / "observations.json"
-    path.write_text(json.dumps(cli_export([observation("root")])))
+    path = tmp_path / "traces.jsonl"
     score = exported_score("s", {"kind": "trace", "id": "t"})
     score.update(dataType=data_type, value=value)
-    score_path = tmp_path / "scores.jsonl"
-    score_path.write_text(json.dumps(cli_export([score])) + "\n" + json.dumps(cli_export([])))
-    trace = next(
-        iter(
-            LangfuseV4FileTraceLoader(
-                LangfuseV4FileTraceConfig(path, scores_path=score_path)
-            ).load()
-        )
-    )
+    path.write_text(json.dumps(sdk_export([observation("root")], [score])))
+    trace = next(iter(LangfuseV4FileTraceLoader(LangfuseV4FileTraceConfig(path)).load()))
     records = trace.evaluator_results["quality"]
     assert isinstance(records, list)
     assert isinstance(records[0], dict)

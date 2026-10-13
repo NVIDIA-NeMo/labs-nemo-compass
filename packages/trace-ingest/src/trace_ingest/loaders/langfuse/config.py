@@ -76,7 +76,7 @@ class LangfuseV3FileTraceDescription(_LangfuseCorpusDescription):
 
 @dataclass(frozen=True)
 class LangfuseV3FileTraceConfig:
-    """A native trace-detail JSON/JSONL file or directory of such files."""
+    """A JSONL file containing one SDK trace-detail record per line."""
 
     path: Path
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES

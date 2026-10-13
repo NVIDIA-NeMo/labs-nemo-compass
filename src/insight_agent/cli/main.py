@@ -177,7 +177,6 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
             return LangfuseV4FileTraceLoader(
                 LangfuseV4FileTraceConfig(
                     path=config.langfuse_export.path,
-                    scores_path=config.langfuse_export.scores_path,
                     base_url=config.langfuse_export.base_url,
                     max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
                 )

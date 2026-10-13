@@ -80,17 +80,16 @@ class MLflowExportConfig(ConfigModel):
 
 
 class LangfuseExportConfig(ConfigModel):
-    """Settings for Langfuse CLI exports with an explicit API version."""
+    """Settings for documented Langfuse SDK exports with an explicit API version."""
 
     path: Path
     api_version: Literal["v3", "v4"]
-    scores_path: Path | None = None
     base_url: str | None = None
 
     @model_validator(mode="after")
     def validate_version_options(self) -> LangfuseExportConfig:
-        if self.api_version == "v3" and (self.scores_path is not None or self.base_url is not None):
-            raise ValueError("scores_path and base_url require langfuse_export.api_version=v4")
+        if self.api_version == "v3" and self.base_url is not None:
+            raise ValueError("base_url requires langfuse_export.api_version=v4")
         return self
 
 
@@ -192,7 +191,7 @@ class TraceConfig(ConfigModel):
     )
     langfuse_export: LangfuseExportConfig | None = Field(
         default=None,
-        description="Langfuse v3/v4 CLI export loader",
+        description="Langfuse v3/v4 SDK export loader",
     )
     langsmith: LangSmithTraceSourceConfig | None = Field(
         default=None,
