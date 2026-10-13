@@ -71,7 +71,7 @@ See [Langfuse compatibility](https://langfuse.com/docs/compatibility) for v4 dat
 ## Use an export
 
 With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-installed, use the example for your server version below. The v3 example also needs `jq`.
+installed, use the example for your server version below.
 
 Coding agents can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
 
