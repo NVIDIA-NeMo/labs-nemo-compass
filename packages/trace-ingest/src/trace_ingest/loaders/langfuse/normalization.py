@@ -177,11 +177,11 @@ def _normalize_v4_trace(
     trace_id: str,
     observations: Sequence[ObservationV2],
     scores: Sequence[ScoreV3],
-    base_url: str,
+    base_url: str | None,
 ) -> Trace:
     pointer: dict[str, JsonValue] = {
         "provider": "langfuse",
-        "base_url": base_url,
+        **({"base_url": base_url} if base_url else {}),
         "trace_id": trace_id,
     }
     roots, ordered, parents = _normalize_tree(trace_id, observations, pointer)
@@ -226,7 +226,9 @@ def _normalize_v4_trace(
         source_url=http_source_url(
             base_url.rstrip("/")
             + f"/project/{quote(project_id, safe='')}/traces/{quote(trace_id, safe='')}"
-        ),
+        )
+        if base_url
+        else None,
         aggregate=TraceAggregate(
             cost_usd=sum(costs) if costs else None,
             latency_ms=(max(ends) - min(starts)).total_seconds() * 1000 if ends else None,

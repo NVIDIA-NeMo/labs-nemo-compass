@@ -62,6 +62,8 @@ from insight_agent.trace_loaders.langfuse import (
     LangfuseTraceLoader,
     LangfuseV3FileTraceConfig,
     LangfuseV3FileTraceLoader,
+    LangfuseV4FileTraceConfig,
+    LangfuseV4FileTraceLoader,
 )
 from insight_agent.trace_loaders.langsmith import (
     LANGSMITH_DEFAULT_MAX_TRACES,
@@ -171,6 +173,15 @@ def _configured_trace_loader(config: TraceConfig) -> TraceLoader:
             )
         )
     if config.langfuse_export is not None:
+        if config.langfuse_export.api_version == "v4":
+            return LangfuseV4FileTraceLoader(
+                LangfuseV4FileTraceConfig(
+                    path=config.langfuse_export.path,
+                    scores_path=config.langfuse_export.scores_path,
+                    base_url=config.langfuse_export.base_url,
+                    max_traces=config.max_traces or LANGFUSE_DEFAULT_MAX_TRACES,
+                )
+            )
         return LangfuseV3FileTraceLoader(
             LangfuseV3FileTraceConfig(
                 path=config.langfuse_export.path,
