@@ -35,15 +35,17 @@ remains available in `AnomalyAndPatternsArtifacts`.
 
 ## Run it
 
+Start with a [source guide](../../../../README.md#start-here) to create `config.yaml`.
+Keep `compass_signals.anomaly_and_patterns` enabled and set the other signal keys to
+`false` for an anomaly-only run.
+
 ```bash
-uv run insight-agent --config trace-analyst-config.yaml
+uv run insight-agent --config config.yaml
 ```
 
-Include `compass_signals.anomaly_and_patterns` in `trace-analyst-config.yaml` and set the
-other signal keys to `false` for an anomaly-only run.
-
-The CLI writes `out/anomaly_and_patterns/digest.md`, extracted features, anomalies, trajectory and verdict groups,
-failure groups, projected problems, and run metadata.
+The CLI saves actionable insights to `insights.yml`. When using the Python API,
+`AnomalyAndPatternsCompassSignal.analyze()` returns native analysis in its result's
+`artifacts` field, including the evidence digest, features, anomalies, and recurring groups.
 
 ## Implementation boundary
 
@@ -51,5 +53,4 @@ failure groups, projected problems, and run metadata.
 - `walk_spans()` is the private shared depth-first traversal of nested spans.
 - `run_anomaly_and_patterns()` owns the native analysis.
 - `AnomalyAndPatternsCompassSignal.analyze()` owns the shared compass-signal handoff.
-- `decode_explicit_failure()` is intentionally independent from the tool-issue decoder; their
-  measured differences are documented in [the decoder comparison](../../../../docs/failure-decoders.md).
+- `decode_explicit_failure()` is intentionally independent from the tool-issue decoder.

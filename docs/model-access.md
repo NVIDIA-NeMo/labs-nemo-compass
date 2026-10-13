@@ -97,5 +97,5 @@ Remote sentiment also loads a tokenizer, which may need an initial download.
 Using local trace files still requires inference access. There is no automatic redaction
 of trace content before analysis; choose inputs and endpoints appropriate for your data.
 
-The CLI writes insights to a local YAML file or stdout. It does not publish findings
-back to the trace platform. [Output details](results.md#saved-output).
+The CLI writes insights to a local YAML file or stdout. With telemetry disabled it
+does not publish findings back to the trace platform. [Output details](results.md#saved-output).

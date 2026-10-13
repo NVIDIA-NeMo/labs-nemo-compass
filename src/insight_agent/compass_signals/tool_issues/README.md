@@ -34,15 +34,17 @@ the native artifacts without presenting them as recurring problems.
 
 ## Run it
 
+Start with a [source guide](../../../../README.md#start-here) to create `config.yaml`.
+Keep `compass_signals.tool_issues` enabled and set the other signal keys to `false`
+for a tool-issue-only run.
+
 ```bash
-uv run insight-agent --config trace-analyst-config.yaml
+uv run insight-agent --config config.yaml
 ```
 
-Include `compass_signals.tool_issues` in `trace-analyst-config.yaml` and set the other
-signal keys to `false` for a tool-issue-only run.
-
-The CLI writes individual findings, cards, finding-type coverage, projected problems, rendered
-card Markdown, and run metadata under `out/tool_issues/`.
+The CLI saves actionable insights to `insights.yml`. When using the Python API,
+`ToolIssueCompassSignal.analyze()` returns findings, cards, finding-type counts, and
+configuration in its result's `artifacts` field.
 
 The adjacent `coverage.py` reports which rules the supplied corpus has enough evidence to
 evaluate. This distinguishes a clean corpus from a detector that is silent because required
@@ -55,5 +57,4 @@ fields were not captured.
 - `detect()` owns individual rule evaluation.
 - `build_cards()` owns recurrence grouping and promotion.
 - `ToolIssueCompassSignal.analyze()` owns the shared compass-signal handoff.
-- `strict_failure()` is intentionally narrower than the anomaly signal's decoder; their measured
-  differences are documented in [the decoder comparison](../../../../docs/failure-decoders.md).
+- `strict_failure()` is intentionally narrower than the anomaly signal's decoder.
