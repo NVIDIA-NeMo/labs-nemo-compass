@@ -15,10 +15,9 @@ Compass installed with the `langfuse` extra.
 
 - Choose the deployment's server version, not the installed SDK or CLI version.
   Project API keys select the project. Keep credentials out of output and reports.
-- V3 uses the Python SDK: paginate matching traces, fetch each full trace, and
-  write `detail.json(exclude_unset=True)` as one JSONL line. Keep omitted fields
-  and explicit nulls unchanged. The documented uv command loads the environment
-  file and supplies the SDK without a repository checkout.
+- V3 uses the CLI and `jq`: list matching trace IDs, fetch each full trace,
+  and write its response body as one JSONL line. Keep omitted fields and explicit
+  nulls unchanged. Check that trace selection completed before using the export.
 - V4 uses installed-CLI commands for observations and optional scores, with
   `--all --json`. Keep their native response envelopes unchanged. Scores are
   project-wide so later evaluations remain available; Compass attaches relevant
@@ -26,7 +25,7 @@ Compass installed with the `langfuse` extra.
 - Retain time bounds on v4 observations. Filters select observations, not whole traces;
   explain when the query or window can omit other observations. Do not silently broaden
   the requested selection.
-- Use unused output paths. Failed or truncated exports are not usable. For v4, CLI
+- Use unused output paths. Failed or truncated exports are not usable. CLI
   `--all` defaults to 1,000 items and has a 100-request ceiling; increase its item
   and page limits or narrow the query when needed.
 - Validate with the matching `LangfuseV3FileTraceLoader` or

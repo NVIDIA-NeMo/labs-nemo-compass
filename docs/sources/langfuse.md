@@ -70,35 +70,23 @@ See [Langfuse compatibility](https://langfuse.com/docs/compatibility) for v4 dat
 
 ## Use an export
 
-These examples need no repository checkout. Use the `.env` above, adjust dates,
-and choose unused output filenames. Discard incomplete files if an export fails.
-Only these formats are supported, not UI exports. Coding agents with a checkout
-can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
+With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
+installed, use the example for your server version below. The v3 example also needs `jq`.
+
+Coding agents can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
 
 ### Langfuse v3
 
-Use uv and the Python SDK to export full traces, including observations and scores:
-
 ```bash
-uv run --env-file .env --with 'langfuse>=4.17,<5' python - <<'PY'
-from datetime import datetime
-from itertools import count
-from langfuse import Langfuse
-
-client = Langfuse(tracing_enabled=False)
-with open("langfuse-v3.jsonl", "w") as output:
-    for page in count(1):
-        traces = client.api.trace.list(
-            page=page, limit=100,
-            from_timestamp=datetime.fromisoformat("2026-09-01T00:00:00Z"),
-            to_timestamp=datetime.fromisoformat("2026-09-02T00:00:00Z"),
-        )
-        for trace in traces.data:
-            detail = client.api.trace.get(trace.id)
-            output.write(detail.json(exclude_unset=True) + "\n")
-        if page >= traces.meta.total_pages:
-            break
-PY
+langfuse --env .env --api-version 3 api traces list \
+  --from-timestamp 2026-09-01T00:00:00Z \
+  --to-timestamp 2026-09-02T00:00:00Z \
+  --all --json |
+jq -r '.body.data[].id' |
+while read -r trace_id; do
+  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
+    jq -c '.body'
+done > langfuse-v3.jsonl
 ```
 
 Replace your config's `trace` section with:
@@ -112,8 +100,8 @@ trace:
 
 ### Langfuse v4
 
-With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
-installed, export observations and project scores (including later evaluations):
+Export observations and optionally project scores if you plan to use the
+[`grader_failure_patterns`](../compass-signals.md#grader-failures) signal:
 
 ```bash
 langfuse --env .env --api-version 4 api observations list \
@@ -122,7 +110,7 @@ langfuse --env .env --api-version 4 api observations list \
   --fields core,basic,io,metadata,model,usage,prompt,trace_context \
   --all --json > observations.json
 
-# Optional: export scores for evaluation evidence
+# Optional
 langfuse --env .env --api-version 4 api scores list \
   --fields details,subject,annotation --all --json > scores.json
 ```
@@ -143,19 +131,6 @@ trace:
     base_url: https://langfuse.example.com
 ```
 
-To analyze the optional scores, use the [`grader_failure_patterns`](../compass-signals.md#grader-failures) evidence stream
-(configured under `compass_signals`). It is enabled by default; to enable it explicitly,
-add this at the top level of `config.yaml`:
+`base_url` is optional and enables Langfuse links in Compass' results.
 
-```yaml
-compass_signals:
-  grader_failure_patterns: {}
-```
-
-This leaves other streams enabled. Without evaluator results, this stream skips.
-
-Omit `scores_path` if you have no scores to supply. `base_url` is optional and enables
-Langfuse links. Online and offline loaders share trace normalization and score association.
-
-Run `insight-agent --config config.yaml` as above. Offline analysis still needs
-inference credentials; `trace.max_traces` controls the number of traces analyzed.
+Run `insight-agent --config config.yaml` as above.
