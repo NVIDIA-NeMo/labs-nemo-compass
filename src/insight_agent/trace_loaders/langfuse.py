@@ -7,11 +7,11 @@ from trace_ingest.loaders.langfuse import (
     LANGFUSE_DEFAULT_MAX_TRACES,
     LangfuseFileTraceConfig,
     LangfuseFileTraceDescription,
-    LangfuseFileTraceLoader,
     LangfuseTraceConfig,
     LangfuseTraceDescription,
-    LangfuseTraceLoader,
     LangfuseTraceLoadError,
+    LangfuseV3FileTraceLoader,
+    LangfuseV3TraceLoader,
     validate_langfuse_time_window,
 )
 
@@ -19,10 +19,10 @@ __all__ = [
     "LANGFUSE_DEFAULT_MAX_TRACES",
     "LangfuseFileTraceConfig",
     "LangfuseFileTraceDescription",
-    "LangfuseFileTraceLoader",
+    "LangfuseV3FileTraceLoader",
     "LangfuseTraceConfig",
     "LangfuseTraceDescription",
     "LangfuseTraceLoadError",
-    "LangfuseTraceLoader",
+    "LangfuseV3TraceLoader",
     "validate_langfuse_time_window",
 ]

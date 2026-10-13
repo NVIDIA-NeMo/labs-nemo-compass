@@ -33,7 +33,7 @@ _LIST_FIELDS = "core"
 
 
 @dataclass
-class LangfuseTraceLoader:
+class LangfuseV3TraceLoader:
     """Load a bounded selection of complete traces from one Langfuse v3 project.
 
     Langfuse API credentials identify the project. A client can be injected for

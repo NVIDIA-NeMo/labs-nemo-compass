@@ -12,17 +12,17 @@ from trace_ingest.loaders.langfuse.config import (
     LangfuseTraceLoadError,
     validate_langfuse_time_window,
 )
-from trace_ingest.loaders.langfuse.v3 import LangfuseTraceLoader
-from trace_ingest.loaders.langfuse.v3_file import LangfuseFileTraceLoader
+from trace_ingest.loaders.langfuse.v3 import LangfuseV3TraceLoader
+from trace_ingest.loaders.langfuse.v3_file import LangfuseV3FileTraceLoader
 
 __all__ = [
     "LANGFUSE_DEFAULT_MAX_TRACES",
     "LangfuseFileTraceConfig",
     "LangfuseFileTraceDescription",
-    "LangfuseFileTraceLoader",
+    "LangfuseV3FileTraceLoader",
     "LangfuseTraceConfig",
     "LangfuseTraceDescription",
-    "LangfuseTraceLoader",
+    "LangfuseV3TraceLoader",
     "LangfuseTraceLoadError",
     "validate_langfuse_time_window",
 ]

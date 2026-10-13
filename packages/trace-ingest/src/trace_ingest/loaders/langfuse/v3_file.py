@@ -25,7 +25,7 @@ from trace_ingest.source_links import file_source_url
 
 
 @dataclass
-class LangfuseFileTraceLoader:
+class LangfuseV3FileTraceLoader:
     """Read full v3 trace responses without contacting Langfuse.
 
     Accepts raw API bodies and the CLI's status/headers/body envelopes. All
