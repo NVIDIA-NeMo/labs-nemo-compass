@@ -31,7 +31,7 @@ from trace_ingest.source_links import file_source_url
 class LangfuseV3FileTraceLoader:
     """Read full v3 trace responses without contacting Langfuse.
 
-    Reads one SDK trace-detail record per JSONL line. All records are validated
+    Reads one API trace-detail record per JSONL line. All records are validated
     before selecting the newest complete traces.
     """
 

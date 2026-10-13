@@ -15,9 +15,9 @@ Compass installed with the `langfuse` extra.
 
 - Choose the deployment's server version, not the installed SDK or CLI version.
   Project API keys select the project. Keep credentials out of output and reports.
-- V3 uses the documented Python SDK recipe: paginate matching traces, fetch each
-  full trace, and write one detail record per JSONL line. Preserve
-  `exclude_unset=True` when serializing SDK records.
+- V3 uses the CLI and `jq`: list matching trace IDs, reject truncated selection,
+  fetch each full trace, and write its response body as one JSONL line. Keep
+  omitted fields and explicit nulls unchanged.
 - V4 uses two installed-CLI commands: observations and scores, both with
   `--all --json`. Keep their native response envelopes unchanged. Scores are
   project-wide so later evaluations remain available; Compass attaches relevant

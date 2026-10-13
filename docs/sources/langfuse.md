@@ -108,10 +108,8 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-These examples work from any directory without a repository checkout. V3 uses
-[uv](https://docs.astral.sh/uv/getting-started/installation/) to supply Langfuse SDK
-4.17.0. V4 uses the installed [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli),
-available with `npm install --global @langfuse/cli@1.2.4`.
+These examples work from any directory with the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
+installed (`npm install --global @langfuse/cli@1.2.4`). The v3 example also uses `jq`.
 
 Create a `.env` file in that directory:
 
@@ -127,33 +125,26 @@ If you have a checkout, your coding agent can also use the optional
 
 ### Langfuse v3
 
-Fetch every matching trace, then its full details including observations and scores:
+List the matching trace IDs, then fetch their full details including observations
+and scores. The `jq` check stops the export if the trace list hits the CLI's limit.
 
 ```bash
-uv run --no-project --with langfuse==4.17.0 --env-file .env python - <<'PYTHON'
-from datetime import datetime
-from itertools import count
-from langfuse import Langfuse
+set -euo pipefail
 
-client = Langfuse(tracing_enabled=False)
-start = datetime.fromisoformat("2026-09-01T00:00:00+00:00")
-end = datetime.fromisoformat("2026-09-02T00:00:00+00:00")
-with open("langfuse-v3.jsonl", "x", encoding="utf-8") as output:
-    for page in count(1):
-        result = client.api.trace.list(
-            from_timestamp=start, to_timestamp=end, page=page, limit=100,
-        )
-        for trace in result.data:
-            detail = client.api.trace.get(trace.id)
-            output.write(detail.json(exclude_unset=True) + "\n")
-        if page >= result.meta.total_pages:
-            break
-PYTHON
+langfuse --env .env --api-version 3 api traces list \
+  --from-timestamp 2026-09-01T00:00:00Z \
+  --to-timestamp 2026-09-02T00:00:00Z \
+  --all --json |
+jq -r 'if .body.meta.truncated then error("Trace list truncated; increase --max-items") else .body.data[].id end' |
+while IFS= read -r trace_id; do
+  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
+    jq -c '.body'
+done > langfuse-v3.jsonl
 ```
 
-The v3 export refuses to overwrite an existing file. If it fails, discard the
-incomplete file before retrying. Each line is a full SDK trace-detail record;
-keep `exclude_unset=True` when serializing to preserve omitted fields.
+Choose an unused output filename; shell redirection overwrites existing files.
+If the export fails, discard the incomplete file before retrying. Each JSONL line
+contains one full trace-detail record extracted from the CLI response.
 
 ### Langfuse v4
 
@@ -211,6 +202,6 @@ Run `insight-agent --config config.yaml` from the directory containing your conf
 and exports. Compass must be installed with the `langfuse` extra, including for
 offline loading. Analysis still needs your [inference credentials](../model-access.md#choose-a-model).
 
-Only the documented v3 SDK JSONL and v4 CLI JSON responses are supported, not UI
+Only the documented v3 trace-detail JSONL and v4 CLI JSON responses are supported, not UI
 exports or directories. A v4 score response with no scores is valid, but the file
 is still required.
