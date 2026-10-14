@@ -23,7 +23,7 @@ from insight_agent.trace_loaders.braintrust import (
 from insight_agent.trace_loaders.langfuse import (
     LangfuseFileTraceConfig,
     LangfuseFileTraceDescription,
-    LangfuseFileTraceLoader,
+    LangfuseV3FileTraceLoader,
 )
 
 __all__ = [
@@ -41,5 +41,5 @@ __all__ = [
     "ATIFTraceLoader",
     "LangfuseFileTraceConfig",
     "LangfuseFileTraceDescription",
-    "LangfuseFileTraceLoader",
+    "LangfuseV3FileTraceLoader",
 ]
