@@ -9,8 +9,8 @@ analysis and CLI code live in `insight_agent`. Keep ingestion independent of
 `insight_agent` so loaders remain reusable through `trace_ingest` imports.
 `uv sync` installs both Python packages from this checkout.
 
-Source SDKs remain optional: use the `mlflow` extra for MLflow file and live
-loaders, and the `langsmith` or `langfuse` extra for their live loaders.
+Source SDKs remain optional: use the `mlflow` and `langfuse` extras for their
+file and live loaders, and the `langsmith` extra for its live loader.
 
 ## Validation
 
