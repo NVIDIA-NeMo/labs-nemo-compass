@@ -3,14 +3,9 @@
 
 # Development
 
-Compass ships as one `insight-agent` distribution. Canonical models and provider
-loaders live in the independent [trace_ingest](src/trace_ingest/) Python package;
-analysis and CLI code live in `insight_agent`. Keep ingestion independent of
-`insight_agent` so loaders remain reusable through `trace_ingest` imports.
-`uv sync` installs both Python packages from this checkout.
-
-Source SDKs remain optional: use the `mlflow` and `langfuse` extras for their
-file and live loaders, and the `langsmith` extra for its live loader.
+Models and loaders live in [trace_ingest](src/trace_ingest/), independent of
+`insight_agent`. Both Python packages ship in the `insight-agent` distribution.
+`uv sync` installs the project locally.
 
 ## Validation
 
@@ -59,11 +54,11 @@ uv run --locked python tools/check_distribution_licenses.py
 ```
 
 The distribution includes the repository-root license and attribution files.
-The artifact check verifies these files and both Python packages in the wheel
-and in a wheel rebuilt from the source distribution outside the repository.
+The artifact check verifies their contents in the wheel, source distribution,
+and a wheel rebuilt outside the repository.
 
 CI also installs the application wheel into a clean environment and checks
-shared model identity, trace loading, and the CLI.
+imports and the CLI.
 
 ## Publish an internal release candidate
 

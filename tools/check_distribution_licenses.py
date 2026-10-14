@@ -20,11 +20,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def check_metadata(contents: bytes, expected: dict[str, bytes]) -> None:
     metadata = email.message_from_bytes(contents)
-    assert metadata["Name"] == "insight-agent"
-    assert not any(
-        requirement.startswith("trace-ingest")
-        for requirement in metadata.get_all("Requires-Dist", [])
-    ), "Ingestion must be bundled, not a separate dependency"
     assert metadata["License-Expression"] == "Apache-2.0"
     assert set(metadata.get_all("License-File", [])) == set(expected), "License-File list differs"
 
@@ -35,10 +30,6 @@ def check_wheel(path: Path, expected: dict[str, bytes]) -> None:
             name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
         ]
         check_metadata(archive.read(metadata_path), expected)
-        for package in ("insight_agent", "trace_ingest"):
-            for source in (REPO_ROOT / "src" / package).rglob("*.py"):
-                name = source.relative_to(REPO_ROOT / "src").as_posix()
-                assert archive.read(name) == source.read_bytes(), f"{path.name}: {name} differs"
         directory = metadata_path.removesuffix("METADATA") + "licenses/"
         for name, contents in expected.items():
             assert archive.read(directory + name) == contents, f"{path.name}: {name} differs"

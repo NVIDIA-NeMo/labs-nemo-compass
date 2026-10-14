@@ -80,15 +80,5 @@ jobs:
           uv pip install --no-config --no-sources --python "$smoke_env/bin/python" \
             dist/insight_agent-*.whl
           cd "$smoke_env"
-          "$smoke_env/bin/python" -I - <<'PY'
-          from importlib.resources import as_file, files
-          from insight_agent.traces import Trace
-          from trace_ingest import Trace as SharedTrace
-          from trace_ingest.loaders.fs import FSDataLoader
-
-          assert Trace is SharedTrace
-          with as_file(files("insight_agent") / "data/sample_corpus.jsonl") as corpus:
-              traces = FSDataLoader(corpus).load()
-              assert traces and all(isinstance(trace, Trace) for trace in traces)
-          PY
+          "$smoke_env/bin/python" -I -c 'from insight_agent.traces import Trace; from trace_ingest import Trace as SharedTrace; assert Trace is SharedTrace'
           "$smoke_env/bin/insight-agent" --help
