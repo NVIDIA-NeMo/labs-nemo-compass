@@ -31,7 +31,7 @@ Paths resolve from your working directory.
 
 ## Canonical JSONL
 
-Each line must contain one complete [Trace](../../packages/trace-ingest/src/trace_ingest/models.py).
+Each line must contain one complete [Trace](../../src/trace_ingest/models.py).
 This small example shows a recorded tool failure and evaluation score:
 
 ```json

@@ -38,7 +38,7 @@ script and the command to rerun it.
 ```
 
 The [canonical format](files.md#canonical-jsonl) and
-[Trace model](../../packages/trace-ingest/src/trace_ingest/models.py) are the conversion references.
+[Trace model](../../src/trace_ingest/models.py) are the conversion references.
 Compare a converted trace with its original before analyzing a larger export.
 
 ## Run NeMo Compass

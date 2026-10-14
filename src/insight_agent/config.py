@@ -14,7 +14,6 @@ from pydantic_settings import (
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
-from trace_ingest.loaders.gym import GymTraceConfig
 
 from insight_agent.compass_signals.anomaly_and_patterns.signal import AnomalyAndPatternsConfig
 from insight_agent.compass_signals.ethos_divergence.ethos_divergence_detector import (
@@ -27,6 +26,7 @@ from insight_agent.trace_loaders.atif import ATIFTraceConfig
 from insight_agent.trace_loaders.braintrust import validate_braintrust_selection
 from insight_agent.trace_loaders.intake import IntakeTraceLoaderConfig
 from insight_agent.trace_loaders.langfuse import validate_langfuse_time_window
+from trace_ingest.loaders.gym import GymTraceConfig
 
 _CONFIG_MODEL_SETTINGS = SettingsConfigDict(
     extra="forbid",

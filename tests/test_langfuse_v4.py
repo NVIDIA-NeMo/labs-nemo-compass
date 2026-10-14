@@ -11,6 +11,9 @@ import httpx
 import pytest
 from langfuse import Langfuse
 from langfuse.api.core.api_error import ApiError
+
+from insight_agent.cli.main import _configured_trace_loader
+from insight_agent.config import LangfuseConfig, TraceConfig
 from trace_ingest.loaders.langfuse import (
     LangfuseTraceConfig,
     LangfuseTraceLoader,
@@ -19,9 +22,6 @@ from trace_ingest.loaders.langfuse import (
     LangfuseV4TraceLoader,
 )
 from trace_ingest.models import UNSET, SpanKind
-
-from insight_agent.cli.main import _configured_trace_loader
-from insight_agent.config import LangfuseConfig, TraceConfig
 
 START = datetime(2026, 8, 1, tzinfo=timezone.utc)
 END = START + timedelta(hours=1)
@@ -298,10 +298,10 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_signals, offline):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
-    import trace_ingest.loaders.langfuse.loader as adapter
     from nooa.unifiedllm import FakeLLMClient
 
     import insight_agent.cli.main as cli
+    import trace_ingest.loaders.langfuse.loader as adapter
 
     tool = observation(
         "tool", parent="root", input='{"query":"missing"}', output='{"error":"not found"}'
@@ -723,9 +723,8 @@ def test_v4_file_rejects_invalid_observations(tmp_path, case, match):
 
 
 def test_v4_file_config_and_successful_empty_exports(tmp_path):
-    from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
-
     from insight_agent.config import LangfuseTraceExportFileConfig
+    from trace_ingest.loaders.langfuse import LangfuseV4FileTraceConfig, LangfuseV4FileTraceLoader
 
     observations, scores = write_exports(tmp_path)
     instance = _configured_trace_loader(
@@ -815,10 +814,10 @@ def test_v4_without_score_file_skips_requested_evaluation(tmp_path, select_signa
     import asyncio
 
     from nooa.unifiedllm import FakeLLMClient
-    from trace_ingest.loaders.langfuse import LangfuseV4FileTraceLoader
 
     from insight_agent.cli.main import _run_compass_signals
     from insight_agent.config import CompassSignalsConfig
+    from trace_ingest.loaders.langfuse import LangfuseV4FileTraceLoader
 
     observations = tmp_path / "observations.json"
     observations.write_text(json.dumps(cli_export([observation("root")])))

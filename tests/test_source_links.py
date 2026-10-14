@@ -9,12 +9,12 @@ import pytest
 import yaml
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
-from trace_ingest.source_links import http_source_url
 
 from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.trace_loaders.fs import FSDataLoader
 from insight_agent.traces import Trace, TraceSnapshot
+from trace_ingest.source_links import http_source_url
 
 
 def trace(id, url=None):
