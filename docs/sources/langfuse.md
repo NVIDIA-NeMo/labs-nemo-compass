@@ -93,8 +93,6 @@ report whether the initial trace list was truncated.
 `langfuse_trace_export_file` replaces the earlier `langfuse_export` key;
 `api_version` is required.
 
-Coding agents can use the [export skill](../../.agents/skills/export-langfuse-traces/SKILL.md).
-
 ### Langfuse v3
 
 ```bash
