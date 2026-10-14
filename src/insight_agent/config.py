@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FilePath, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -288,6 +288,9 @@ class RunConfig(BaseSettings):
         description="Optional YAML configuration file",
     )
     trace: TraceConfig = Field(description="Trace source and loading settings")
+    ethos_path: FilePath | None = Field(
+        default=None, description="Agent purpose and behavioral requirements document"
+    )
     output_path: Path = Field(default=Path("insights.yml"), description="Output path")
     compass_signals: CompassSignalsConfig = Field(
         default_factory=CompassSignalsConfig, description="Compass Signal selection and settings"

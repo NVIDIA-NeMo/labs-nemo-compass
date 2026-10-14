@@ -8,9 +8,12 @@ import pytest
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
 
+from insight_agent.cli import main as cli
 from insight_agent.cli.main import _run_compass_signals, get_config
+from insight_agent.compass_signals.builtins import registered_builtin_signals
 from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.compass_signals.ethos_divergence import ethos_divergence_detector as ethos
+from insight_agent.config import RunConfig
 from insight_agent.traces import Trace, TraceAggregate, TraceSnapshot
 
 
@@ -21,8 +24,10 @@ def test_ethos_cli_runs_registered_detector(tmp_path, monkeypatch, select_signal
         [
             "--trace.filesystem.path",
             "unused.jsonl",
+            "--ethos-path",
+            str(path),
             "--compass-signals",
-            json.dumps(select_signals(ethos_divergence={"ethos_path": str(path)})),
+            json.dumps(select_signals(ethos_divergence={})),
         ]
     )
     snapshot = TraceSnapshot([Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate())])
@@ -41,7 +46,11 @@ def test_ethos_cli_runs_registered_detector(tmp_path, monkeypatch, select_signal
             return [problem]
 
     monkeypatch.setattr(ethos, "IssueDetector", FakeDetector)
-    results = asyncio.run(_run_compass_signals(config.compass_signals, snapshot, lambda: llm))
+    results = asyncio.run(
+        _run_compass_signals(
+            config.compass_signals, snapshot, lambda: llm, ethos_path=config.ethos_path
+        )
+    )
     assert len(results) == 1
     assert results[0].signal_name == "ethos-divergence"
     assert results[0].problems == (problem,)
@@ -50,10 +59,55 @@ def test_ethos_cli_runs_registered_detector(tmp_path, monkeypatch, select_signal
 def test_ethos_rejects_missing_and_empty_documents(tmp_path):
     path = tmp_path / "ethos.md"
     with pytest.raises(ValidationError):
-        ethos.EthosDivergenceConfig(ethos_path=path)
+        RunConfig(trace={"filesystem": {"path": "unused.jsonl"}}, ethos_path=path)
     path.write_text(" \n", encoding="utf-8")
     signal = ethos.EthosDivergenceCompassSignal(
-        config=ethos.EthosDivergenceConfig(ethos_path=path), llm=FakeLLMClient()
+        config=ethos.EthosDivergenceConfig(), llm=FakeLLMClient(), ethos_path=path
     )
     with pytest.raises(ValueError, match="non-empty"):
         signal.check_prerequisites(TraceSnapshot([]))
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_shared_ethos_respects_signal_selection(tmp_path, select_signals, enabled):
+    path = tmp_path / "ethos.md"
+    path.write_text("Never issue refunds.")
+    config = RunConfig(
+        trace={"filesystem": {"path": "unused.jsonl"}},
+        ethos_path=path,
+        compass_signals=select_signals(tool_issues={}, ethos_divergence=enabled),
+    )
+    registry = registered_builtin_signals(
+        ethos_divergence=config.compass_signals.ethos_divergence,
+        ethos_path=config.ethos_path,
+        llm_factory=FakeLLMClient,
+    )
+    assert ("ethos-divergence" in registry.names) is enabled
+
+
+def test_generate_insights_passes_shared_ethos_to_detector(tmp_path, monkeypatch, select_signals):
+    from rich.console import Console
+
+    path = tmp_path / "ETHOS.md"
+    path.write_text("Never issue refunds.")
+    source = tmp_path / "traces.jsonl"
+    source.write_text(
+        Trace(id="trace-1", root_spans=[], aggregate=TraceAggregate()).model_dump_json() + "\n"
+    )
+    config = RunConfig(
+        trace={"filesystem": {"path": source}},
+        ethos_path=path,
+        compass_signals=select_signals(ethos_divergence=True),
+    )
+    received = []
+
+    async def detect(snapshot, llm, ethos):
+        received.append(ethos)
+        return []
+
+    monkeypatch.setattr(ethos, "detect_ethos_divergence", detect)
+    monkeypatch.setattr(cli, "_check_environment", lambda config: "test-key")
+    monkeypatch.setattr(cli, "_build_llm", lambda *args: FakeLLMClient())
+    result = asyncio.run(cli._generate_insights(config, cli.RunOutput(Console(quiet=True))))
+    assert received == ["Never issue refunds."]
+    assert result.evidence[0].signal_name == "ethos-divergence"

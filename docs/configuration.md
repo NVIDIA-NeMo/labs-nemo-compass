@@ -15,6 +15,7 @@ in the environment or `.env`.
 | --- | --- |
 | `trace` | Exactly one source; see the [source guides](../README.md#start-here). |
 | `trace.max_traces` | Limit complete traces from a provider or native export. Unsupported for canonical JSONL, ATIF, and Gym rollouts. |
+| `ethos_path` | Optional agent purpose and behavioral requirements document. Used by ethos divergence; independent of signal selection. |
 | `output_path` | YAML output file; defaults to `insights.yml`. Use `-` for stdout. |
 | `model`, `api_base`, `max_tokens` | [Inference settings](model-access.md#choose-a-model). |
 | `compass_signals` | [Compass Signals and their prerequisites](compass-signals.md). All five are enabled by default. |
@@ -89,3 +90,11 @@ output_path: updated-insights.yml
 
 NeMo Compass reconciles old and new findings into a complete collection.
 See [output behavior](results.md#saved-output) before using the files in a pipeline.
+
+## Upgrading existing integrations
+
+The ETHOS document path is now top-level `ethos_path` (`--ethos-path` on the CLI).
+The former `compass_signals.ethos_divergence.ethos_path` setting is rejected.
+See the [migration guide](../skills/compass-migrate/references/top-level-ethos-path.md)
+for YAML and Python changes. Coding agents can use the committed
+[Compass migration skill](../skills/compass-migrate/SKILL.md) when upgrading a consumer.
