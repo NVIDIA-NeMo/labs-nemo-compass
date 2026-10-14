@@ -3,21 +3,19 @@
 
 # Preparing a Compass release
 
-A `v<version>` tag runs CI and creates a **draft GitHub release** with the validated
-wheel, source archive, and `SHA256SUMS`. This workflow does not publish to Python indexes.
+The **Prepare release** GitHub Action runs CI, tags the validated commit, and creates
+a **draft GitHub release** with its wheel, source archive, and `SHA256SUMS`.
+This workflow does not publish to Python indexes.
 
 1. Set `[project].version` in `pyproject.toml`, run `uv lock`, and merge the change.
-   The distribution name must be `nemo-compass`. Tags must match the version exactly;
-   a tag does not change the package version.
-2. Tag the intended commit and push it. For example:
-
-   ```bash
-   git tag -a v0.1.0 <commit> -m "NeMo Compass 0.1.0"
-   git push origin v0.1.0
-   ```
-
-3. After CI succeeds, review the draft's generated notes and artifacts. Prerelease
-   versions are marked automatically. The release job reuses the validated files.
+   The distribution name must be `nemo-compass`.
+2. Open **Actions → Prepare release → Run workflow**. Choose the branch to release,
+   or enter a specific commit SHA, then click **Run workflow**. The action must be
+   merged into the default branch before GitHub shows this button.
+3. After CI succeeds, the action creates the version tag (for example, `v0.1.0`)
+   on the exact commit it checked and opens a draft release. Review its generated
+   notes and artifacts. Prerelease versions are marked automatically. The release
+   job reuses the validated files without rebuilding them.
 4. Coordinate the publishing handoff with Phil's team before publishing the GitHub
    release. Share the tag, version, wheel URL, and checksums. Draft asset URLs are
    private; agree how the publishing workflow will retrieve the wheel and what event
@@ -26,9 +24,10 @@ wheel, source archive, and `SHA256SUMS`. This workflow does not publish to Pytho
 ## Recovery
 
 Use **Re-run failed jobs** in Actions to reuse successful jobs and their artifacts.
-To start a fresh run for a tag, use `gh workflow run ci.yaml --ref v0.1.0`.
-Manual branch runs perform CI checks only.
+To repeat all checks, start **Prepare release** again with the same commit SHA.
 
-Existing releases are never overwritten. If draft creation partially failed, inspect
-the assets, delete the incomplete unpublished draft, and rerun the failed release job.
-Preserve published artifacts and shared tags; changes require a new version.
+An existing tag is reused only if it already points directly to the validated commit;
+tags are never moved. Existing releases are never overwritten. If draft creation
+partially failed, inspect the assets, delete the incomplete unpublished draft, and
+rerun the failed release job. Preserve published artifacts and shared tags; changes
+require a new version.
