@@ -330,10 +330,10 @@ def test_v4_cli_runs_evidence(tmp_path, monkeypatch, select_signals, offline):
         END.isoformat(),
     ]
     if offline:
-        observations_path, scores_path = write_exports(tmp_path, [tool, observation("root")])
+        path, scores_path = write_exports(tmp_path, [tool, observation("root")])
         source_args = [
-            "--trace.langfuse-trace-export-file.observations-path",
-            str(observations_path),
+            "--trace.langfuse-trace-export-file.path",
+            str(path),
             "--trace.langfuse-trace-export-file.scores-path",
             str(scores_path),
             "--trace.langfuse-trace-export-file.api-version",
@@ -731,13 +731,14 @@ def test_v4_file_config_and_successful_empty_exports(tmp_path):
     instance = _configured_trace_loader(
         TraceConfig(
             langfuse_trace_export_file=LangfuseTraceExportFileConfig(
-                observations_path=observations, scores_path=scores, api_version="v4"
+                path=observations, scores_path=scores, api_version="v4"
             )
         )
     )
     assert isinstance(instance, LangfuseV4FileTraceLoader)
     assert list(instance.load()) == []
     assert instance.describe()["export_trace_count"] == 0
+    assert instance.describe()["path"] == str(observations.resolve())
     with pytest.raises(ValueError, match="max_traces"):
         LangfuseV4FileTraceConfig(observations, scores, max_traces=0)
 
@@ -823,7 +824,7 @@ def test_v4_without_score_file_skips_requested_evaluation(tmp_path, select_signa
     observations.write_text(json.dumps(cli_export([observation("root")])))
     instance = _configured_trace_loader(
         TraceConfig.model_validate(
-            {"langfuse_trace_export_file": {"api_version": "v4", "observations_path": observations}}
+            {"langfuse_trace_export_file": {"api_version": "v4", "path": observations}}
         )
     )
     assert isinstance(instance, LangfuseV4FileTraceLoader)

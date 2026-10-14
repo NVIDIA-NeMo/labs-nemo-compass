@@ -56,13 +56,13 @@ def _read_cli_data(path: Path) -> list[dict[str, JsonValue]]:
 class LangfuseV4FileTraceConfig:
     """Observation and score CLI response files, with optional platform links."""
 
-    observations_path: Path
+    path: Path
     scores_path: Path | None = None
     max_traces: int = LANGFUSE_DEFAULT_MAX_TRACES
     base_url: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "observations_path", Path(self.observations_path))
+        object.__setattr__(self, "path", Path(self.path))
         if self.scores_path is not None:
             object.__setattr__(self, "scores_path", Path(self.scores_path))
         if self.max_traces < 1:
@@ -72,7 +72,7 @@ class LangfuseV4FileTraceConfig:
 class LangfuseV4FileTraceDescription(_LangfuseCorpusDescription):
     """Offline v4 corpus and score coverage."""
 
-    observations_path: str
+    path: str
     scores_path: str | None
     export_trace_count: int
     max_traces: int
@@ -98,9 +98,7 @@ class LangfuseV4FileTraceLoader:
         from langfuse.api.scores_v3.types.score_v3 import ScoreV3
 
         try:
-            observations = parse_obj_as(
-                list[ObservationV2], _read_cli_data(self.config.observations_path)
-            )
+            observations = parse_obj_as(list[ObservationV2], _read_cli_data(self.config.path))
             scores = (
                 parse_obj_as(list[ScoreV3], _read_cli_data(self.config.scores_path))
                 if self.config.scores_path is not None
@@ -114,8 +112,8 @@ class LangfuseV4FileTraceLoader:
         for trace_id, items in groups.items():
             trace = _normalize_v4_trace(trace_id, items, by_trace[trace_id], self.config.base_url)
             if trace.source_url is None:
-                trace.source_url = file_source_url(self.config.observations_path)
-            trace.attributes["export_path"] = str(self.config.observations_path.resolve())
+                trace.source_url = file_source_url(self.config.path)
+            trace.attributes["export_path"] = str(self.config.path.resolve())
             traces.append((min(_started_at(obs) for obs in items), trace_id, trace))
         self._snapshot = TraceSnapshot(
             trace for _, _, trace in sorted(traces)[-self.config.max_traces :]
@@ -126,10 +124,8 @@ class LangfuseV4FileTraceLoader:
 
     def describe(self) -> LangfuseV4FileTraceDescription:
         return {
-            **_describe_corpus(
-                f"langfuse-v4-export:{self.config.observations_path.resolve()}", self._snapshot
-            ),
-            "observations_path": str(self.config.observations_path.resolve()),
+            **_describe_corpus(f"langfuse-v4-export:{self.config.path.resolve()}", self._snapshot),
+            "path": str(self.config.path.resolve()),
             "scores_path": str(self.config.scores_path.resolve())
             if self.config.scores_path is not None
             else None,

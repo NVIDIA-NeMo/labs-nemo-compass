@@ -152,16 +152,12 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
     "source,match",
     [
         ({"path": "traces.jsonl"}, "api_version"),
-        ({"api_version": "v3"}, "require path"),
+        ({"api_version": "v3"}, "path"),
         (
             {"api_version": "v3", "path": "traces.jsonl", "scores_path": "scores.json"},
             "require api_version=v4",
         ),
-        ({"api_version": "v4"}, "require observations_path"),
-        (
-            {"api_version": "v4", "observations_path": "observations.json", "path": "traces.jsonl"},
-            "instead of path",
-        ),
+        ({"api_version": "v4"}, "path"),
     ],
 )
 def test_langfuse_export_requires_explicit_version_and_matching_paths(source, match):

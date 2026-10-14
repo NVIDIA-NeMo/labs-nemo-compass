@@ -136,7 +136,7 @@ output_path: insights.yml
 trace:
   langfuse_trace_export_file:
     api_version: v4
-    observations_path: observations.json
+    path: observations.json
     scores_path: scores.json  # Optional
     base_url: https://langfuse.example.com
 ```
