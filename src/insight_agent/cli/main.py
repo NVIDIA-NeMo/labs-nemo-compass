@@ -221,6 +221,8 @@ async def _run_compass_signals(
     snapshot: TraceSnapshot,
     llm_factory: Callable[[], UnifiedLLM] | None = None,
     progress: Callable[[Sequence[str]], None] | None = None,
+    *,
+    ethos_path: Path | None = None,
 ) -> list[CompassSignalResult]:
     """Run the configured Compass Signals concurrently in registration order."""
 
@@ -228,6 +230,7 @@ async def _run_compass_signals(
         anomaly_and_patterns=config.anomaly_and_patterns,
         tool_issues=config.tool_issues,
         ethos_divergence=config.ethos_divergence,
+        ethos_path=ethos_path,
         user_sentiment=config.user_sentiment,
         grader_failure_patterns=config.grader_failure_patterns,
         llm_factory=llm_factory,
@@ -381,6 +384,7 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             snapshot,
             lambda: _build_llm(config, api_key),
             progress,
+            ethos_path=config.ethos_path,
         )
         existing = load_insights(config.existing_insights) if config.existing_insights else []
         result = RunResult(

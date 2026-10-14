@@ -144,3 +144,24 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
     assert config.compass_signals.tool_issues.retry_threshold == 5
     assert config.compass_signals.anomaly_and_patterns is not None
     assert config.compass_signals.grader_failure_patterns is not None
+
+
+def test_ethos_yaml_and_cli_override_independent_of_signal_selection(tmp_path):
+    yaml_ethos = tmp_path / "yaml.md"
+    yaml_ethos.write_text("Original requirements")
+    cli_ethos = tmp_path / "cli.md"
+    cli_ethos.write_text("Override requirements")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"trace:\n  filesystem:\n    path: traces.jsonl\nethos_path: {yaml_ethos}\n"
+        "compass_signals:\n  ethos_divergence: false\n"
+    )
+    config = RunConfig(_cli_parse_args=["--config", str(config_path)])
+    assert config.ethos_path == yaml_ethos
+    assert config.compass_signals.ethos_divergence is None
+    config = RunConfig(
+        _cli_parse_args=["--config", str(config_path), "--ethos-path", str(cli_ethos)]
+    )
+    assert config.ethos_path == cli_ethos
+    assert config.compass_signals.ethos_divergence is None
+    assert config.model_dump(mode="json")["ethos_path"] == str(cli_ethos)

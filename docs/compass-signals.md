@@ -22,9 +22,7 @@ Use concrete requirements, such as:
 Save your own rules in `ethos.md`, then add this to your configuration:
 
 ```yaml
-compass_signals:
-  ethos_divergence:
-    ethos_path: ethos.md
+ethos_path: ethos.md
 ```
 
 The file must exist and contain text. Its path resolves from your working directory.
