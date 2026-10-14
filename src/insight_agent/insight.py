@@ -12,9 +12,9 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, TypeAdapter
-from trace_ingest.source_links import SourceURL
 
 from insight_agent.traces import TraceSnapshot
+from trace_ingest.source_links import SourceURL
 
 Rating = Literal["low", "med", "high"]
 

@@ -30,7 +30,6 @@ import yaml
 from nooa.unifiedllm import CompletionClient, UnifiedLLM
 from pydantic_settings import CliSettingsSource
 from rich.console import Console
-from trace_ingest.loaders.gym import GymTraceLoader
 
 from insight_agent.cli.output import RunOutput, RunResult, display_name
 from insight_agent.compass_signals.builtins import registered_builtin_signals
@@ -80,6 +79,7 @@ from insight_agent.trace_loaders.mlflow import (
 )
 from insight_agent.trace_loaders.trace_loaders import TraceLoader
 from insight_agent.traces import Trace, TraceSnapshot
+from trace_ingest.loaders.gym import GymTraceLoader
 
 EXIT_OK = 0
 EXIT_SETUP = 2

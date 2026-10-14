@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock
 import pytest
 from nooa.unifiedllm import FakeLLMClient
 from pydantic import ValidationError
-from trace_ingest.loaders import GymTraceConfig, GymTraceLoader, GymTraceLoadError
-from trace_ingest.models import UNSET, SpanKind, TokenCounts
 
 import insight_agent.cli.main as cli
 from insight_agent.compass_signals.tool_issues.signal import to_tool_issue_trace
 from insight_agent.config import RunConfig, TraceConfig
+from trace_ingest.loaders import GymTraceConfig, GymTraceLoader, GymTraceLoadError
+from trace_ingest.models import UNSET, SpanKind, TokenCounts
 
 
 def rollout():

@@ -20,7 +20,7 @@ span identity, nesting, ordering, tool calls and results, timestamps, status,
 metrics, and pagination. Do not guess fields or accept several speculative
 shapes. Reject ambiguous or incomplete input with a source-specific error.
 
-Read these contracts in `packages/trace-ingest/src/trace_ingest/`:
+Read these contracts in `src/trace_ingest/`:
 
 - `loaders/trace_loaders.py` defines `TraceLoader` and `TraceDescription`.
 - `models.py` defines `Trace`, `Span`, and `TraceSnapshot`.
