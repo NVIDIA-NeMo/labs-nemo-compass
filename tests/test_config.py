@@ -4,6 +4,8 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from insight_agent.config import CompassSignalsConfig, RunConfig
 
 
@@ -83,15 +85,15 @@ def test_yaml_accepts_code_base(tmp_path: Path) -> None:
     assert config.code_base == Path("../my-agent")
 
 
-def test_langfuse_export_yaml_with_cli_limit(tmp_path: Path) -> None:
+def test_langfuse_trace_export_file_yaml_with_cli_limit(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "trace:\n  langfuse_export:\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
+        "trace:\n  langfuse_trace_export_file:\n    api_version: v3\n    path: exports\ncompass_signals:\n  tool_issues: {}\n",
         encoding="utf-8",
     )
     config = RunConfig(_cli_parse_args=["--config", str(config_path), "--trace.max-traces", "200"])
-    assert config.trace.langfuse_export is not None
-    assert config.trace.langfuse_export.path == Path("exports")
+    assert config.trace.langfuse_trace_export_file is not None
+    assert config.trace.langfuse_trace_export_file.path == Path("exports")
     assert config.trace.max_traces == 200
 
 
@@ -144,3 +146,22 @@ def test_signals_default_on_and_false_disables_only_that_signal(tmp_path):
     assert config.compass_signals.tool_issues.retry_threshold == 5
     assert config.compass_signals.anomaly_and_patterns is not None
     assert config.compass_signals.grader_failure_patterns is not None
+
+
+@pytest.mark.parametrize(
+    "source,match",
+    [
+        ({"path": "traces.jsonl"}, "api_version"),
+        ({"api_version": "v3"}, "path"),
+        (
+            {"api_version": "v3", "path": "traces.jsonl", "scores_path": "scores.json"},
+            "require api_version=v4",
+        ),
+        ({"api_version": "v4"}, "path"),
+    ],
+)
+def test_langfuse_export_requires_explicit_version_and_matching_paths(source, match):
+    from insight_agent.config import TraceConfig
+
+    with pytest.raises(ValueError, match=match):
+        TraceConfig.model_validate({"langfuse_trace_export_file": source})

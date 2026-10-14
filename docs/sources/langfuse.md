@@ -16,9 +16,10 @@ uv tool install \
 ```
 
 [Configure your inference model and key](../model-access.md#choose-a-model).
-Add your project’s Langfuse keys to `.env`:
+Add your deployment URL and project’s Langfuse keys to `.env`:
 
 ```dotenv
+LANGFUSE_BASE_URL=https://langfuse.example.com
 LANGFUSE_PUBLIC_KEY=your-public-key
 LANGFUSE_SECRET_KEY=your-secret-key
 ```
@@ -75,46 +76,78 @@ Missing or conflicting catalogs limit those checks.
 
 ## Use an export
 
-Replace the `trace` section with a file containing complete v3 trace details:
+With the [Langfuse CLI](https://langfuse.com/docs/api-and-data-platform/features/cli)
+installed, use the example for your server version below. `--all` defaults to
+1,000 items and at most 100 requests: increase `--max-items` / `--limit` or
+narrow the query when needed. V3 also requires `jq`; its extracted JSONL cannot
+report whether the initial trace list was truncated.
 
-```yaml
-trace:
-  max_traces: 100
-  langfuse_export:
-    path: langfuse-traces.jsonl
-```
+`langfuse_trace_export_file` replaces the earlier `langfuse_export` key;
+`api_version` is required.
 
-Rerun the same analysis command. Local loading needs inference credentials only.
-Use complete trace-detail records with observations; trace-list summaries and UI CSV files
-do not contain enough information. Raw API responses, CLI response envelopes, and directories
-of immediate `.json` or `.jsonl` files are accepted. The loader validates all records, rejects
-duplicate IDs, and selects the newest traces up to the limit. The extra installs SDK `>=4.17,<5`.
-
-<details>
-<summary>Create a complete export</summary>
-
-Set your Langfuse credentials, including `LANGFUSE_BASE_URL`, in `.env` and adjust the dates.
-This writes a new file and refuses to overwrite an existing one.
+### Langfuse v3
 
 ```bash
-uv run --isolated --no-project --env-file .env --with 'langfuse>=3.15,<4' python - <<'PY'
-from datetime import datetime, timezone
-from itertools import count
-from langfuse import Langfuse
-
-client = Langfuse(tracing_enabled=False)
-with open("langfuse-traces.jsonl", "x", encoding="utf-8") as output:
-    for page in count(1):
-        result = client.api.trace.list(
-            from_timestamp=datetime(2026, 9, 1, tzinfo=timezone.utc),
-            to_timestamp=datetime(2026, 9, 2, tzinfo=timezone.utc),
-            page=page, limit=100, order_by="timestamp.asc",
-        )
-        for trace in result.data:
-            output.write(client.api.trace.get(trace.id).json(by_alias=True) + "\n")
-        if page >= result.meta.total_pages:
-            break
-PY
+langfuse --env .env --api-version 3 api traces list \
+  --from-timestamp 2026-09-01T00:00:00Z \
+  --to-timestamp 2026-09-02T00:00:00Z \
+  --all --json |
+jq -r '.body.data[].id' |
+while read -r trace_id; do
+  langfuse --env .env --api-version 3 api traces get "$trace_id" --json |
+    jq -c '.body'
+done > langfuse-v3.jsonl
 ```
 
-</details>
+Configure Compass with:
+
+```yaml
+output_path: insights.yml
+trace:
+  langfuse_trace_export_file:
+    api_version: v3
+    path: langfuse-v3.jsonl
+```
+
+### Langfuse v4
+
+Export observations and optionally project scores if you plan to use the
+[`grader_failure_patterns`](../compass-signals.md#grader-failures) signal:
+
+```bash
+langfuse --env .env --api-version 4 api observations list \
+  --from-start-time 2026-09-01T00:00:00Z \
+  --to-start-time 2026-09-02T00:00:00Z \
+  --fields core,basic,io,metadata,model,usage,prompt,trace_context \
+  --all --json > observations.json
+
+# Optional
+langfuse --env .env --api-version 4 api scores list \
+  --fields details,subject,annotation --all --json > scores.json
+```
+
+Keep exported responses unchanged. Compass rejects v4 exports marked truncated.
+Observation filters and dates can exclude observations belonging to the same trace.
+
+Configure Compass with:
+
+```yaml
+output_path: insights.yml
+trace:
+  langfuse_trace_export_file:
+    api_version: v4
+    path: observations.json
+    scores_path: scores.json  # Optional
+    base_url: https://langfuse.example.com
+```
+
+`base_url` is optional and enables Langfuse links in Compass' results.
+To analyze supplied scores, add this top-level section (alongside any other
+signals you want to run):
+
+```yaml
+compass_signals:
+  grader_failure_patterns: {}
+```
+
+Run `insight-agent --config config.yaml` as above.

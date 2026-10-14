@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -78,10 +79,21 @@ class MLflowExportConfig(ConfigModel):
     path: Path
 
 
-class LangfuseExportConfig(ConfigModel):
-    """Settings owned by the native Langfuse v3 export loader."""
+class LangfuseTraceExportFileConfig(ConfigModel):
+    """Settings for the documented Langfuse v3/v4 export files."""
 
+    api_version: Literal["v3", "v4"]
     path: Path
+    scores_path: Path | None = None
+    base_url: str | None = None
+
+    @model_validator(mode="after")
+    def validate_version_options(self) -> LangfuseTraceExportFileConfig:
+        if self.api_version == "v3" and any(
+            value is not None for value in (self.scores_path, self.base_url)
+        ):
+            raise ValueError("scores_path and base_url require api_version=v4")
+        return self
 
 
 class BraintrustConfig(ConfigModel):
@@ -180,9 +192,9 @@ class TraceConfig(ConfigModel):
         default=None,
         description="Live Langfuse v3/v4 trace loader",
     )
-    langfuse_export: LangfuseExportConfig | None = Field(
+    langfuse_trace_export_file: LangfuseTraceExportFileConfig | None = Field(
         default=None,
-        description="Native Langfuse v3 trace-detail export loader",
+        description="Langfuse v3/v4 trace export file loader",
     )
     langsmith: LangSmithTraceSourceConfig | None = Field(
         default=None,
@@ -206,7 +218,7 @@ class TraceConfig(ConfigModel):
                 self.intake,
                 self.braintrust,
                 self.langfuse,
-                self.langfuse_export,
+                self.langfuse_trace_export_file,
                 self.langsmith,
                 self.langsmith_trace_export_file,
             )
