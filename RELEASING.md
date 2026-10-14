@@ -12,8 +12,8 @@ wheel, source archive, and `SHA256SUMS`. This workflow does not publish to Pytho
 2. Tag the intended commit and push it. For example:
 
    ```bash
-   git tag -a v0.1.0rc1 <commit> -m "NeMo Compass 0.1.0rc1"
-   git push origin v0.1.0rc1
+   git tag -a v0.1.0 <commit> -m "NeMo Compass 0.1.0"
+   git push origin v0.1.0
    ```
 
 3. After CI succeeds, review the draft's generated notes and artifacts. Prerelease
@@ -26,7 +26,7 @@ wheel, source archive, and `SHA256SUMS`. This workflow does not publish to Pytho
 ## Recovery
 
 Use **Re-run failed jobs** in Actions to reuse successful jobs and their artifacts.
-To start a fresh run for a tag, use `gh workflow run ci.yaml --ref v0.1.0rc1`.
+To start a fresh run for a tag, use `gh workflow run ci.yaml --ref v0.1.0`.
 Manual branch runs perform CI checks only.
 
 Existing releases are never overwritten. If draft creation partially failed, inspect
