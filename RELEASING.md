@@ -12,8 +12,8 @@ NVIDIA's Python index, or KitMaker by this workflow.
 - Merge the packaging consolidation: the wheel must contain both `insight_agent`
   and `trace_ingest`, with no dependency on a separate `trace-ingest` distribution.
 - Set `[project].name` to `nemo-compass`, update the lockfile and packaging references
-  (including CI's wheel install command and the distribution license checker), and
-  merge that change to `main`.
+  (including CI's wheel install command, the distribution license checker, and the
+  metadata lookup in `src/insight_agent/version.py`), and merge that change to `main`.
 - Confirm the release name, version, legal/security approvals, and KitMaker project
   owner with the publishing team. Arrange KitMaker access and the handoff with Philip.
 - Allow GitHub Actions to create releases with the repository's `GITHUB_TOKEN`.
