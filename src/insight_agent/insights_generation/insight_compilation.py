@@ -18,6 +18,7 @@ from pydantic.json_schema import SkipJsonSchema
 from insight_agent.compass_signals._trace import walk_spans
 from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
+from insight_agent.insights_generation.trace_queries import TraceQueries
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -166,7 +167,11 @@ class InsightCompilation(Agent):
         run_timestamp: datetime,
     ) -> list[Insight]:
         completions = await self._compile_insights(
-            compass_signals, trace_snapshot, existing_insights, run_timestamp
+            compass_signals,
+            trace_snapshot,
+            existing_insights,
+            run_timestamp,
+            TraceQueries(trace_snapshot),
         )
         return [completion.apply(trace_snapshot, run_timestamp) for completion in completions]
 
@@ -177,6 +182,7 @@ class InsightCompilation(Agent):
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
         run_timestamp: datetime,
+        trace_queries: TraceQueries,
     ) -> list[EvidenceCompletion]:  # ty: ignore[empty-body] -- Nooa generates the ellipsis method at runtime.
         """
         Your job is to be the last step of the insight creation process. An
@@ -213,6 +219,12 @@ class InsightCompilation(Agent):
 
         Inspect short excerpts of supporting traces with
         trace_snapshot.get_trace_by_id(trace_id). Use Python for snapshot scans.
+        For suspected repeated-call loops, use
+        trace_queries.repeated_tool_calls(trace_id) before writing custom grouping
+        code. It groups exact recorded inputs and returns span IDs and outcomes.
+        Repetition is not itself a bug: inspect full spans for legitimate polling,
+        changed state, recovery, and eventual success. Results are bounded; an
+        empty result does not rule out other kinds of loops.
 
         After validating, you must merge the new insights with the existing
         insights, and across Compass Signals.
