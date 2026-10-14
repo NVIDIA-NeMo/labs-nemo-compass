@@ -6,14 +6,6 @@
 Choose a time window containing the conversations you want to understand.
 Recorded scores, including scores attached to observations, are included automatically.
 
-Live loading supports Langfuse v3 and v4. Compass reads the server version from
-`/api/public/health` and selects the matching API automatically.
-
-Langfuse v4 moved from a trace-centric to an observation-centric model. Compass
-groups observations by `traceId` to reconstruct traces for analysis. Scores are
-optional: without evaluator results, `grader_failure_patterns` skips while other
-analyses can still run.
-
 ## Connect and run
 
 With [uv and Git installed](../../README.md#start-here), install the CLI with Langfuse support:
