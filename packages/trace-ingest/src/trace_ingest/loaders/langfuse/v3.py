@@ -5,19 +5,19 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urljoin
 
+from trace_ingest.loaders.langfuse.client import _new_langfuse_client, _resolved_base_url
 from trace_ingest.loaders.langfuse.config import (
     LangfuseTraceConfig,
     LangfuseTraceDescription,
     LangfuseTraceLoadError,
+    _describe_live_source,
 )
 from trace_ingest.loaders.langfuse.filters import _bounded_filter
 from trace_ingest.loaders.langfuse.normalization import (
-    _describe_corpus,
     _normalize_trace,
     _trace_id,
     _trace_timestamp,
@@ -27,7 +27,7 @@ from trace_ingest.source_links import http_source_url
 
 if TYPE_CHECKING:
     from langfuse import Langfuse
-    from langfuse.api.resources.commons.types.trace_with_details import TraceWithDetails
+    from langfuse.api.commons.types.trace_with_details import TraceWithDetails
 _API_PAGE_SIZE = 100
 _LIST_FIELDS = "core"
 
@@ -119,41 +119,4 @@ class LangfuseV3TraceLoader:
         """Describe the configured source and most recently loaded corpus."""
 
         base_url = self._base_url or _resolved_base_url(self.config.base_url)
-        return {
-            **_describe_corpus(f"langfuse:{base_url}", self._snapshot),
-            "base_url": base_url,
-            "filter": self.config.filter_string,
-            "from_timestamp": self.config.from_timestamp.isoformat(),
-            "to_timestamp": self.config.to_timestamp.isoformat(),
-            "max_traces": self.config.max_traces,
-        }
-
-
-def _new_langfuse_client(base_url: str) -> Langfuse:
-    try:
-        from langfuse import Langfuse
-    except ImportError as error:
-        raise ModuleNotFoundError(
-            "Langfuse support is not installed; install the project with the 'langfuse' extra"
-        ) from error
-    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
-    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
-    if not public_key or not secret_key:
-        raise LangfuseTraceLoadError(
-            "Langfuse loading requires LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY"
-        )
-    return Langfuse(
-        public_key=public_key,
-        secret_key=secret_key,
-        base_url=base_url,
-        tracing_enabled=False,
-    )
-
-
-def _resolved_base_url(configured: str | None) -> str:
-    base_url = configured or os.environ.get("LANGFUSE_BASE_URL")
-    if not base_url:
-        raise LangfuseTraceLoadError(
-            "Langfuse v3 loading requires trace.langfuse.base_url or LANGFUSE_BASE_URL"
-        )
-    return base_url
+        return _describe_live_source(self.config, base_url, "v3", self._snapshot)

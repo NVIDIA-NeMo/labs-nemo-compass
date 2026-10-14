@@ -12,10 +12,10 @@ from trace_ingest.loaders.langfuse.config import (
     LangfuseFileTraceConfig,
     LangfuseFileTraceDescription,
     LangfuseTraceLoadError,
+    _describe_corpus,
 )
 from trace_ingest.loaders.langfuse.file_io import _parse_trace_export
 from trace_ingest.loaders.langfuse.normalization import (
-    _describe_corpus,
     _normalize_trace,
     _trace_id,
     _trace_timestamp,
@@ -40,9 +40,10 @@ class LangfuseV3FileTraceLoader:
 
     def load(self) -> TraceSnapshot:
         """Validate native exports and reuse live trace normalization."""
-        from langfuse.api.resources.commons.types.trace_with_full_details import (
+        from langfuse.api.commons.types.trace_with_full_details import (
             TraceWithFullDetails,
         )
+        from langfuse.api.core.pydantic_utilities import parse_obj_as
 
         export_path = self.config.path.resolve()
         files = (
@@ -62,7 +63,7 @@ class LangfuseV3FileTraceLoader:
             contents = path.read_bytes()
             for index, record in enumerate(_parse_trace_export(contents, path), start=1):
                 try:
-                    provider = TraceWithFullDetails.parse_obj(record)
+                    provider = parse_obj_as(TraceWithFullDetails, record)
                     trace_id = _trace_id(provider)
                     if trace_id in seen:
                         raise LangfuseTraceLoadError(f"duplicate trace id {trace_id!r}")

@@ -9,9 +9,11 @@ from trace_ingest.loaders.langfuse import (
     LangfuseFileTraceDescription,
     LangfuseTraceConfig,
     LangfuseTraceDescription,
+    LangfuseTraceLoader,
     LangfuseTraceLoadError,
     LangfuseV3FileTraceLoader,
     LangfuseV3TraceLoader,
+    LangfuseV4TraceLoader,
     validate_langfuse_time_window,
 )
 
@@ -24,5 +26,7 @@ __all__ = [
     "LangfuseTraceDescription",
     "LangfuseTraceLoadError",
     "LangfuseV3TraceLoader",
+    "LangfuseTraceLoader",
+    "LangfuseV4TraceLoader",
     "validate_langfuse_time_window",
 ]

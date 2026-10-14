@@ -8,13 +8,15 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from langfuse import Langfuse
-from langfuse.api.resources.commons.types.observation_level import ObservationLevel
-from langfuse.api.resources.commons.types.observations_view import ObservationsView
-from langfuse.api.resources.commons.types.trace_with_full_details import TraceWithFullDetails
-from langfuse.api.resources.commons.types.usage import Usage
+from langfuse.api.commons.types.observation_level import ObservationLevel
+from langfuse.api.commons.types.observations_view import ObservationsView
+from langfuse.api.commons.types.trace_with_full_details import TraceWithFullDetails
+from langfuse.api.commons.types.usage import Usage
+from langfuse.api.core.pydantic_utilities import parse_obj_as
 
 from insight_agent.compass_signals.tool_issues.signal import (
     detect_trace,
@@ -47,7 +49,7 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelop
             observation("root", observation_type="AGENT"),
         ]
     )
-    record = json.loads(native.json(by_alias=True))
+    record = json.loads(native.json(exclude_unset=True))
     exported = {"status": 200, "headers": {}, "body": record} if envelope else record
     export_path = tmp_path / "trace.json"
     export_path.write_text(json.dumps(exported))
@@ -85,9 +87,11 @@ def test_native_export_matches_live_normalization(tmp_path, monkeypatch, envelop
 
 
 def test_export_directory_limits_and_ordering(tmp_path):
-    (tmp_path / "b.json").write_text(provider_trace("old", timestamp=START).json(by_alias=True))
+    (tmp_path / "b.json").write_text(
+        provider_trace("old", timestamp=START).json(exclude_unset=True)
+    )
     (tmp_path / "a.jsonl").write_text(
-        "\n".join(provider_trace(id, timestamp=END).json(by_alias=True) for id in ("z", "a"))
+        "\n".join(provider_trace(id, timestamp=END).json(exclude_unset=True) for id in ("z", "a"))
     )
     loader = LangfuseV3FileTraceLoader(LangfuseFileTraceConfig(tmp_path, max_traces=2))
     assert [t.id for t in loader.load()] == ["a", "z"]
@@ -119,7 +123,7 @@ def test_export_rejects_invalid_records_before_limit(tmp_path, case, match):
     if case == "cycle":
         obs = observation("child", parent_id="child")
     native = provider_trace(observations=[obs, obs] if case == "duplicate_observation" else [obs])
-    record = json.loads(native.json(by_alias=True))
+    record = json.loads(native.json(exclude_unset=True))
     if case == "summary":
         record["observations"] = ["child"]
     if case == "list_response":
@@ -131,7 +135,9 @@ def test_export_rejects_invalid_records_before_limit(tmp_path, case, match):
     newest_id = "trace-1" if case == "duplicate_trace" else "newest"
     export_path = tmp_path / "traces.jsonl"
     export_path.write_text(
-        provider_trace(newest_id, timestamp=END).json(by_alias=True) + "\n" + json.dumps(record)
+        provider_trace(newest_id, timestamp=END).json(exclude_unset=True)
+        + "\n"
+        + json.dumps(record)
     )
     with pytest.raises(LangfuseTraceLoadError, match=match):
         LangfuseV3FileTraceLoader(LangfuseFileTraceConfig(export_path, max_traces=1)).load()
@@ -175,7 +181,7 @@ def test_export_cli_runs_evidence_without_langfuse_client(tmp_path, monkeypatch,
         ]
     )
     export_path = tmp_path / "trace.json"
-    export_path.write_text(native.json(by_alias=True))
+    export_path.write_text(native.json(exclude_unset=True))
     compilation = SimpleNamespace(compile_insights=AsyncMock(return_value=[]))
     monkeypatch.setenv("INSIGHT_AGENT_API_KEY", "test-key")
     monkeypatch.setattr(Langfuse, "__init__", lambda *a, **kw: pytest.fail("offline client"))
@@ -225,7 +231,9 @@ def test_corpus_reports_count_only_selected_traces(tmp_path, offline):
     )
     if offline:
         export_path = tmp_path / "traces.jsonl"
-        export_path.write_text("\n".join(t.json(by_alias=True) for t in (newest, oldest, middle)))
+        export_path.write_text(
+            "\n".join(t.json(exclude_unset=True) for t in (newest, oldest, middle))
+        )
         loader = LangfuseV3FileTraceLoader(LangfuseFileTraceConfig(export_path, max_traces=2))
     else:
         loader = LangfuseV3TraceLoader(
@@ -295,7 +303,7 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
     ]
     payload = provider_trace(observations=[observation("tool", observation_type="TOOL")]).dict()
     payload["scores"] = records
-    native = TraceWithFullDetails.parse_obj(payload)
+    native = parse_obj_as(TraceWithFullDetails, payload)
     if offline:
         export_path = tmp_path / "trace.json"
         export_path.write_text(native.json())
@@ -312,9 +320,9 @@ def test_scores_reach_evaluation_index_without_losing_repeated_names(tmp_path, o
         expected.setdefault(score["name"], []).append(
             {
                 **score,
-                "timestamp": str(START),
-                "createdAt": str(START),
-                "updatedAt": str(END),
+                "timestamp": START.isoformat().replace("+00:00", "Z"),
+                "createdAt": START.isoformat().replace("+00:00", "Z"),
+                "updatedAt": END.isoformat().replace("+00:00", "Z"),
             }
         )
     assert evaluations == expected
@@ -363,7 +371,14 @@ class FakeClient(Langfuse):
         details: dict[str, TraceWithFullDetails],
     ) -> None:
         self.trace = FakeTraceAPI(pages, details)
-        self.api = SimpleNamespace(trace=self.trace)
+        self._fake_api = SimpleNamespace(trace=self.trace, health=self)
+
+    @property
+    def api(self) -> Any:
+        return self._fake_api
+
+    def health(self):
+        return SimpleNamespace(status="OK", version="3.155.1")
 
 
 def observation(
@@ -384,14 +399,14 @@ def observation(
 ) -> ObservationsView:
     return ObservationsView(
         id=observation_id,
-        traceId=trace_id,
+        trace_id=trace_id,
         type=observation_type,
         name=name,
-        startTime=start_time,
-        endTime=end_time,
-        completionStartTime=None,
+        start_time=start_time,
+        end_time=end_time,
+        completion_start_time=None,
         model=model,
-        modelParameters={"temperature": 0},
+        model_parameters={"temperature": 0},
         input=input_value,
         version="v2",
         metadata={"source": "test"},
@@ -400,26 +415,26 @@ def observation(
             input=10,
             output=4,
             total=14,
-            totalCost=total_cost,
+            total_cost=total_cost,
         ),
         level=ObservationLevel(level),
-        statusMessage=status_message,
-        parentObservationId=parent_id,
-        promptId="prompt-1",
-        usageDetails={"input": 10, "output": 4},
-        costDetails={"total": total_cost} if total_cost is not None else {},
+        status_message=status_message,
+        parent_observation_id=parent_id,
+        prompt_id="prompt-1",
+        usage_details={"input": 10, "output": 4},
+        cost_details={"total": total_cost} if total_cost is not None else {},
         environment="test",
-        promptName="support",
-        promptVersion=3,
-        modelId=None,
-        inputPrice=None,
-        outputPrice=None,
-        totalPrice=None,
-        calculatedInputCost=None,
-        calculatedOutputCost=None,
-        calculatedTotalCost=total_cost,
+        prompt_name="support",
+        prompt_version=3,
+        model_id=None,
+        input_price=None,
+        output_price=None,
+        total_price=None,
+        calculated_input_cost=None,
+        calculated_output_cost=None,
+        calculated_total_cost=total_cost,
         latency=None,
-        timeToFirstToken=None,
+        time_to_first_token=None,
     )
 
 
@@ -438,17 +453,17 @@ def provider_trace(
         name="support-agent",
         input={"messages": [{"role": "user", "content": "find it"}]},
         output={"answer": "done"},
-        sessionId=session_id,
+        session_id=session_id,
         release="2026.08",
         version="v2",
-        userId="user-1",
+        user_id="user-1",
         metadata={"source": "fixture"},
         tags=["test"],
         public=False,
         environment="test",
-        htmlPath=f"/project/project-1/traces/{trace_id}",
+        html_path=f"/project/project-1/traces/{trace_id}",
         latency=latency,
-        totalCost=total_cost,
+        total_cost=total_cost,
         observations=observations or [],
         scores=[],
     )
@@ -716,7 +731,7 @@ def test_export_argument_analysis_distinguishes_missing_input(
         ]
     )
     export_path = tmp_path / "trace.json"
-    export_path.write_text(native.json(by_alias=True))
+    export_path.write_text(native.json(exclude_unset=True))
     trace = next(iter(LangfuseV3FileTraceLoader(LangfuseFileTraceConfig(export_path)).load()))
     call = to_tool_issue_trace(trace)
 

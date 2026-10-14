@@ -6,9 +6,6 @@
 Choose a time window containing the conversations you want to understand.
 Recorded scores, including scores attached to observations, are included automatically.
 
-This adapter supports the v3 API, tested with self-hosted Langfuse 3.205.1 and
-Python SDK 3.15. Langfuse v4 is not supported.
-
 ## Connect and run
 
 With [uv and Git installed](../../README.md#start-here), install the CLI with Langfuse support:
@@ -30,6 +27,7 @@ Save this as `config.yaml`. Replace the URL and dates with your deployment and t
 
 ```yaml
 max_tokens: 16384
+output_path: insights.yml
 trace:
   max_traces: 100
   langfuse:
@@ -48,7 +46,7 @@ for help with findings or skipped Compass Signals.
 ## Select the right traces
 
 Your API keys select the project. Both timestamps are required and must include a timezone;
-the start is inclusive and the end is exclusive. The default limit is 100 complete traces.
+the start is inclusive and the end is exclusive. The default limit is 100 distinct traces.
 `base_url` overrides `LANGFUSE_BASE_URL` in the environment.
 
 To filter by environment, add this under `trace.langfuse`:
@@ -56,6 +54,21 @@ To filter by environment, add this under `trace.langfuse`:
 ```yaml
 filter: '[{"type":"string","column":"environment","operator":"=","value":"production"}]'
 ```
+
+- **V3:** filters select traces; Compass fetches their full details.
+- **V4:** filters select observations; Compass fetches all observations for their trace IDs
+  **within the same window**. Observations outside it are excluded; costs and latency
+  reflect only loaded observations. Widen the window when you need complete traces.
+
+Use your version's [v3 trace](https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces)
+or [v4 observation](https://api.reference.langfuse.com/#tag/observationsv2/GET/api/public/v2/observations)
+filter syntax. For example, `name` means trace name in v3 and observation name in v4;
+use `traceName` for v4 trace names. Compass does not translate filters between versions.
+
+V4 fetches observations for up to four trace IDs concurrently and batches score
+requests across up to 100 trace IDs, including scores recorded after the window.
+These limits are automatic. See [Langfuse compatibility](https://langfuse.com/docs/compatibility)
+for v4 data-availability delays.
 
 For tool-schema checks, record tool definitions in `input.tools` on generation observations.
 Missing or conflicting catalogs limit those checks.
@@ -75,7 +88,7 @@ Rerun the same analysis command. Local loading needs inference credentials only.
 Use complete trace-detail records with observations; trace-list summaries and UI CSV files
 do not contain enough information. Raw API responses, CLI response envelopes, and directories
 of immediate `.json` or `.jsonl` files are accepted. The loader validates all records, rejects
-duplicate IDs, and selects the newest traces up to the limit. The extra installs SDK `>=3.15,<4`.
+duplicate IDs, and selects the newest traces up to the limit. The extra installs SDK `>=4.17,<5`.
 
 <details>
 <summary>Create a complete export</summary>
