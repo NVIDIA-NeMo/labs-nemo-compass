@@ -242,9 +242,10 @@ class InsightCompilation(Agent):
 
         Preserve each existing insight's id exactly. Never invent an id or
         assign an existing id to a new insight; new insights have id=None.
-        Existing insights should never be removed or modified, but you can
-        update the evidence on existing insights to match new traces you
-        identified. Keep existing references, including those outside this snapshot.
+        Existing insights should never be removed or modified, except that you
+        can update their evidence to match new traces you identified and fill
+        a missing severity_reason as described below. Keep existing references,
+        including those outside this snapshot.
         When you merge insights, check that added references support the merged
         claim. Merge evidence by trace ID. Do not copy every candidate into evidence.
 
@@ -268,6 +269,14 @@ class InsightCompilation(Agent):
         do not reduce a severe consequence because it occurs in few traces.
         Use the merged supporting evidence, not just the failing span. Source
         code access is not required. Preserve existing insights' ratings.
+
+        For each new insight with a severity rating, add severity_reason as one
+        short, plain sentence stating the observed consequence that supports
+        the rating. You may also fill a missing severity_reason on an existing
+        insight with a severity rating. Leave severity_reason=None when severity
+        is unknown. Preserve existing ratings and reasons; never invent an
+        unobserved task outcome.
+
         Leave confidence=None on new insights; an optional code review sets it.
 
         When inspecting supporting traces, record the specific relevant Span.id values

@@ -60,6 +60,12 @@ class Insight(BaseModel):
         exclude_if=lambda value: value is None,
         description="Observed consequence after recovery; set during final compilation without code access.",
     )
+    severity_reason: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description="Observed consequence that supports the severity rating, in one short sentence.",
+    )
 
 
 def resolve_trace_links(
