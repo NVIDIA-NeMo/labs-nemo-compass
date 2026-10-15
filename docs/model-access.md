@@ -54,6 +54,7 @@ You can also set `model` and `api_base` in YAML or override them on the CLI.
 
 We recommend the following models for NeMo Compass:
 
+- **NVIDIA Nemotron 3.5 Super VL**
 - **Claude Sonnet 5.5**
 - **GPT-6 Luna**
 
