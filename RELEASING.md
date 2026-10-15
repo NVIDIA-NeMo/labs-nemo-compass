@@ -10,8 +10,7 @@
 3. Wait for CI to pass. The action tags the checked commit and creates a draft
    release with the wheel, source archive, and checksums. Version `0.1.0`, for
    example, produces tag `v0.1.0`.
-4. Review the draft's notes and files. Share the release link with Phil's team and
-   agree on the KitMaker handoff before publishing the GitHub release.
+4. Review the draft's notes and files before publishing the GitHub release.
 
 The action does not publish to PyPI.
 
