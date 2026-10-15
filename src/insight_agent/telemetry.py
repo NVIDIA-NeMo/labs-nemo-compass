@@ -119,6 +119,25 @@ def _input_metadata(
     }
 
 
+def _input_metadata_fields(metadata: InputMetadata) -> dict[str, str | int | bool]:
+    """Keep provenance within LangSmith's scalar metadata value limits.
+
+    The deployed OTLP mapper drops strings of 500 or more characters. Numbered
+    parts preserve long JSON values without truncating references or file details.
+    """
+    fields: dict[str, str | int | bool] = {}
+    for key, value in metadata.items():
+        name = f"compass.input.{key}"
+        encoded = value if isinstance(value, (str, int, bool)) else json.dumps(value)
+        if isinstance(encoded, str) and len(encoded) >= 500:
+            parts = [encoded[index : index + 499] for index in range(0, len(encoded), 499)]
+            fields[f"{name}.parts"] = len(parts)
+            fields.update({f"{name}.{index}": part for index, part in enumerate(parts)})
+        else:
+            fields[name] = encoded
+    return fields
+
+
 def record_input_metadata(
     config: SourceConfig, loader: TraceLoader, snapshot: TraceSnapshot
 ) -> None:
@@ -130,15 +149,7 @@ def record_input_metadata(
             json.dumps(
                 {
                     **_execution_metadata(),
-                    # LangSmith's OTLP mapper keeps scalar metadata values only.
-                    **{
-                        f"compass.input.{key}": json.dumps(value)
-                        if isinstance(value, (dict, list))
-                        else value
-                        for key, value in _input_metadata(
-                            config, loader.describe(), snapshot
-                        ).items()
-                    },
+                    **_input_metadata_fields(_input_metadata(config, loader.describe(), snapshot)),
                 }
             ),
         )

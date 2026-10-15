@@ -113,7 +113,10 @@ does not publish findings back to the trace platform. [Output details](results.m
 When Compass telemetry is enabled, open the root `compass` span in LangSmith and
 look for the `compass.input.*` fields in its metadata. Structured values such as
 trace references and file fingerprints are JSON strings because LangSmith’s OTLP
-mapper preserves scalar metadata values. These describe the input corpus without
+mapper preserves scalar metadata values. Long values are split into numbered
+parts below 500 characters: for example, `compass.input.traces.parts` gives the
+part count, and `compass.input.traces.0`, `.1`, and so on hold the pieces. Join them
+in numeric order before parsing the JSON; no input references are truncated. These describe the input corpus without
 copying input traces into telemetry spans:
 
 - `source_type` and `selection` identify the configured loader, query, filters,

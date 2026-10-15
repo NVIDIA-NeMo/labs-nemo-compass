@@ -164,3 +164,39 @@ def test_unavailable_file_preserves_loaded_corpus_identity(tmp_path):
     ]
     assert metadata["trace_count"] == 1
     assert len(metadata["normalized_sha256"]) == 64
+
+
+def test_input_metadata_fields_preserve_large_reference_lists():
+    import json
+
+    from insight_agent.telemetry import InputMetadata, _input_metadata_fields
+
+    metadata: InputMetadata = {
+        "source_type": "filesystem",
+        "selection": {"path": "/" + "long-path/" * 100},
+        "description": {
+            "source": "unicode café " * 100,
+            "trace_count": 160,
+            "call_count": 0,
+            "distinct_logical_cases": 160,
+        },
+        "trace_count": 160,
+        "traces": [
+            {"id": str(i), "source_url": "https://example.com/" + str(i)} for i in range(160)
+        ],
+        "files": [{"path": "/traces.jsonl", "sha256": "a" * 64}],
+        "normalized_sha256": "b" * 64,
+        "snapshot_saved": False,
+    }
+    fields = _input_metadata_fields(metadata)
+    assert all(not isinstance(value, str) or len(value) < 500 for value in fields.values())
+    for key, original in metadata.items():
+        name = f"compass.input.{key}"
+        if f"{name}.parts" in fields:
+            count = fields[f"{name}.parts"]
+            assert isinstance(count, int)
+            encoded = "".join(str(fields[f"{name}.{i}"]) for i in range(count))
+        else:
+            encoded = fields[name]
+        restored = json.loads(str(encoded)) if isinstance(original, (dict, list)) else encoded
+        assert restored == original
