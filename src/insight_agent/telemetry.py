@@ -18,14 +18,17 @@ from pathlib import Path
 from typing import Literal, NotRequired, TypedDict
 
 import nooa
-from nooa.tracing import enable_tracing, exporters, shutdown_traces
+from nooa.tracing import enable_tracing, shutdown_traces
 from openinference.instrumentation import OITracer, TraceConfig
 from openinference.instrumentation._spans import OpenInferenceSpan
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http import Compression
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from pydantic import JsonValue
 
 from insight_agent.config import RunConfig
 from insight_agent.config import TraceConfig as SourceConfig
+from insight_agent.telemetry_export import ExceptionEventExporter
 from insight_agent.version import __version__
 from trace_ingest.loaders.trace_loaders import TraceDescription, TraceLoader
 from trace_ingest.models import TraceSnapshot
@@ -127,7 +130,15 @@ def record_input_metadata(
             json.dumps(
                 {
                     **_execution_metadata(),
-                    "compass.input": _input_metadata(config, loader.describe(), snapshot),
+                    # LangSmith's OTLP mapper keeps scalar metadata values only.
+                    **{
+                        f"compass.input.{key}": json.dumps(value)
+                        if isinstance(value, (dict, list))
+                        else value
+                        for key, value in _input_metadata(
+                            config, loader.describe(), snapshot
+                        ).items()
+                    },
                 }
             ),
         )
@@ -184,7 +195,20 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
         # Nooa prints initialization messages; stdout belongs to the CLI's YAML output.
         with redirect_stdout(sys.stderr):
             enable_tracing(
-                exporters=[exporters.otlp(f"{endpoint}/otel/v1/traces", headers)],
+                exporters=[
+                    ExceptionEventExporter(
+                        OTLPSpanExporter(
+                            endpoint=f"{endpoint}/otel/v1/traces",
+                            headers=headers,
+                            compression=Compression.Gzip,
+                            timeout=float(
+                                os.getenv("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT")
+                                or os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT")
+                                or "60"
+                            ),
+                        )
+                    )
+                ],
             )
     try:
         with span("compass") as root:

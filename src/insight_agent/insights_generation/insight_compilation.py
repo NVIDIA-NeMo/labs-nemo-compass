@@ -18,6 +18,7 @@ from pydantic.json_schema import SkipJsonSchema
 from insight_agent.compass_signals._trace import walk_spans
 from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
+from insight_agent.telemetry import span
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -108,37 +109,60 @@ class EvidenceCompletion(BaseModel):
 
     def apply(self, snapshot: TraceSnapshot, run_timestamp: datetime) -> Insight:
         """Add matching evidence, or keep the insight unchanged if the scan fails."""
-        try:
-            matches, unknown = self.scan(snapshot)
-        except Exception as error:
-            warnings.warn(
-                f"The evidence scan did not complete for {self.insight.name!r}: "
-                f"{type(error).__name__}: {str(error)[:300]}. "
-                "The insight keeps its existing references. The scan added no new references.",
-                stacklevel=2,
+        with span("evidence_scan") as record:
+            record.set_input({"insight_name": self.insight.name, "trace_count": len(snapshot)})
+            try:
+                matches, unknown = self.scan(snapshot)
+            except Exception as error:
+                skipped = (
+                    self.predicate is None
+                    and bool(self.unresolved_reason and self.unresolved_reason.strip())
+                    and not self.checks
+                )
+                record.set_output(
+                    {
+                        "status": "skipped" if skipped else "failed",
+                        "reason": str(error)[:300],
+                        "error_type": None if skipped else type(error).__name__,
+                    }
+                )
+                warnings.warn(
+                    f"The evidence scan did not complete for {self.insight.name!r}: "
+                    f"{type(error).__name__}: {str(error)[:300]}. "
+                    "The insight keeps its existing references. The scan added no new references.",
+                    stacklevel=2,
+                )
+                return self.insight
+            record.set_output(
+                {
+                    "status": "incomplete" if unknown else "complete",
+                    "match_count": len(matches),
+                    "unknown_count": unknown,
+                }
             )
-            return self.insight
-        if unknown:
-            warnings.warn(
-                f"Evidence scan incomplete for {self.insight.name!r}: "
-                f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
-                "The scan added its matches, but other supporting traces may remain without references.",
-                stacklevel=2,
+            if unknown:
+                warnings.warn(
+                    f"Evidence scan incomplete for {self.insight.name!r}: "
+                    f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
+                    "The scan added its matches, but other supporting traces may remain without references.",
+                    stacklevel=2,
+                )
+            evidence = {item.trace_id: item for item in self.insight.evidence}
+            added_trace = any(item.trace_id not in evidence for item in matches)
+            for item in matches:
+                previous = evidence.get(item.trace_id, item)
+                spans = {span.span_id: span for span in previous.spans}
+                for evidence_span in item.spans:
+                    spans.setdefault(evidence_span.span_id, evidence_span)
+                evidence[item.trace_id] = previous.model_copy(
+                    update={"spans": list(spans.values())}
+                )
+            return self.insight.model_copy(
+                update={
+                    "evidence": list(evidence.values()),
+                    "updated_date": run_timestamp if added_trace else self.insight.updated_date,
+                }
             )
-        evidence = {item.trace_id: item for item in self.insight.evidence}
-        added_trace = any(item.trace_id not in evidence for item in matches)
-        for item in matches:
-            previous = evidence.get(item.trace_id, item)
-            spans = {span.span_id: span for span in previous.spans}
-            for span in item.spans:
-                spans.setdefault(span.span_id, span)
-            evidence[item.trace_id] = previous.model_copy(update={"spans": list(spans.values())})
-        return self.insight.model_copy(
-            update={
-                "evidence": list(evidence.values()),
-                "updated_date": run_timestamp if added_trace else self.insight.updated_date,
-            }
-        )
 
 
 def _validate_completions(

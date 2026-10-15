@@ -407,10 +407,15 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
         result.insights = resolve_trace_links(result.insights, snapshot, existing)
         if config.code_base is not None and result.insights:
             output.activity = "Investigating insight confidence against the codebase"
-            async with _build_llm(config, api_key) as llm:
-                result.insights = await _rate_confidence_with_code(
-                    result.insights, snapshot, config.code_base, llm
+            with span("confidence") as record:
+                record.set_input(
+                    {"insight_count": len(result.insights), "code_base": str(config.code_base)}
                 )
+                async with _build_llm(config, api_key) as llm:
+                    result.insights = await _rate_confidence_with_code(
+                        result.insights, snapshot, config.code_base, llm
+                    )
+                record.set_output({"insights": result.insights})
         return result
 
 
@@ -426,10 +431,23 @@ async def _compile_evidence(
     async with _build_llm(config, api_key) as llm:
         if config.code_base is not None:
             output.activity = "Checking candidate issues against the codebase"
-            evidence = await _validate_evidence_with_code(evidence, snapshot, config.code_base, llm)
-            result.rejected_by_code = sum(len(item.problems) for item in result.evidence) - sum(
-                len(item.problems) for item in evidence
-            )
+            with span("validation") as record:
+                candidate_count = sum(len(item.problems) for item in evidence)
+                record.set_input(
+                    {"problem_count": candidate_count, "code_base": str(config.code_base)}
+                )
+                evidence = await _validate_evidence_with_code(
+                    evidence, snapshot, config.code_base, llm
+                )
+                result.rejected_by_code = candidate_count - sum(
+                    len(item.problems) for item in evidence
+                )
+                record.set_output(
+                    {
+                        "retained": candidate_count - result.rejected_by_code,
+                        "rejected": result.rejected_by_code,
+                    }
+                )
         if not any(item.problems for item in evidence):
             return result.existing_insights
         output.activity = "Reviewing candidate issues for actionable insights"

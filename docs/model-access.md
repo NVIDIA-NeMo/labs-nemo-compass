@@ -111,7 +111,9 @@ does not publish findings back to the trace platform. [Output details](results.m
 ### Finding the inputs of a Compass run
 
 When Compass telemetry is enabled, open the root `compass` span in LangSmith and
-look for `compass.input` in its metadata. This describes the input corpus without
+look for the `compass.input.*` fields in its metadata. Structured values such as
+trace references and file fingerprints are JSON strings because LangSmith’s OTLP
+mapper preserves scalar metadata values. These describe the input corpus without
 copying input traces into telemetry spans:
 
 - `source_type` and `selection` identify the configured loader, query, filters,
@@ -138,3 +140,13 @@ accessible from other machines, and live records may change or expire.
 The `ingestion` span still measures loading, and subsequent spans describe
 Compass's analysis. Model and tool spans can contain input excerpts used during
 that analysis; this change does not redact their execution content.
+
+Telemetry requests use gzip compression to reduce transfer size. The OTLP exporter’s
+64 MiB limit still applies to the uncompressed request. Requests have a 60-second
+timeout by default; `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT` (or the shared
+`OTEL_EXPORTER_OTLP_TIMEOUT`) can override it in seconds.
+
+Validation, evidence scanning, and confidence rating have explicit spans. Evidence
+scan outputs distinguish complete, incomplete, skipped, and failed scans; a recovered
+scan failure does not fail the overall run. Tool errors include exception events so
+LangSmith can show failed attempts even when the agent recovers.
