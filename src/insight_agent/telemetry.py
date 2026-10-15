@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -14,18 +15,122 @@ from collections.abc import Iterator
 from contextlib import contextmanager, redirect_stdout
 from functools import partial
 from pathlib import Path
+from typing import Literal, NotRequired, TypedDict
 
 import nooa
 from nooa.tracing import enable_tracing, exporters, shutdown_traces
 from openinference.instrumentation import OITracer, TraceConfig
 from openinference.instrumentation._spans import OpenInferenceSpan
 from opentelemetry import trace
+from pydantic import JsonValue
 
 from insight_agent.config import RunConfig
+from insight_agent.config import TraceConfig as SourceConfig
 from insight_agent.version import __version__
+from trace_ingest.loaders.trace_loaders import TraceDescription, TraceLoader
+from trace_ingest.models import TraceSnapshot
 
 tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig())
 span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
+
+
+class FileReference(TypedDict):
+    path: str
+    sha256: str | None
+    error: NotRequired[str]
+
+
+class TraceReference(TypedDict):
+    id: str
+    source_url: str | None
+
+
+class InputMetadata(TypedDict):
+    source_type: str
+    selection: dict[str, JsonValue]
+    description: TraceDescription
+    trace_count: int
+    traces: list[TraceReference]
+    files: list[FileReference]
+    normalized_sha256: str
+    snapshot_saved: Literal[False]
+
+
+def _file_metadata(path: Path) -> FileReference:
+    """Fingerprint a source file without exporting its contents."""
+    path = path.resolve()
+    try:
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        return {"path": str(path), "sha256": digest}
+    except OSError:
+        # A source may disappear after ingestion; telemetry must not prevent analysis.
+        return {"path": str(path), "sha256": None, "error": "file unavailable after ingestion"}
+
+
+def _input_metadata(
+    config: SourceConfig, description: TraceDescription, snapshot: TraceSnapshot
+) -> InputMetadata:
+    """Identify the loaded corpus, keeping trace bodies out of the run's metadata."""
+    source_type, source = next(
+        (name, value) for name, value in config if name != "max_traces" and value is not None
+    )
+    files: list[FileReference] = []
+    for value in source.model_dump().values():
+        if not isinstance(value, Path):
+            continue
+        if value.is_dir():
+            # These are the two loaders accepting directories of export files.
+            suffixes = (
+                {".jsonl"} if source_type == "langsmith_trace_export_file" else {".json", ".jsonl"}
+            )
+            files.extend(
+                _file_metadata(path)
+                for path in sorted(value.iterdir())
+                if path.is_file()
+                and (
+                    path.suffix.lower()
+                    if source_type == "langsmith_trace_export_file"
+                    else path.suffix
+                )
+                in suffixes
+            )
+        else:
+            files.append(_file_metadata(value))
+
+    digest = hashlib.sha256()
+    references: list[TraceReference] = []
+    for item in snapshot:
+        references.append({"id": item.id, "source_url": item.source_url})
+        digest.update(item.model_dump_json().encode("utf-8"))
+        digest.update(b"\n")
+    return {
+        "source_type": source_type,
+        "selection": config.model_dump(mode="json", exclude_none=True),
+        "description": description,
+        "trace_count": len(snapshot),
+        "traces": references,
+        "files": files,
+        "normalized_sha256": digest.hexdigest(),
+        "snapshot_saved": False,
+    }
+
+
+def record_input_metadata(
+    config: SourceConfig, loader: TraceLoader, snapshot: TraceSnapshot
+) -> None:
+    """Attach provenance to the current Compass root after its ingestion span closes."""
+    root = trace.get_current_span()
+    if root.is_recording():
+        root.set_attribute(
+            "metadata",
+            json.dumps(
+                {
+                    **_execution_metadata(),
+                    "compass.input": _input_metadata(config, loader.describe(), snapshot),
+                }
+            ),
+        )
 
 
 def _execution_metadata() -> dict[str, str | bool]:
@@ -88,7 +193,7 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
                 # Use OpenInference span metadata for LangSmith compatibility.
                 root.set_attribute("metadata", json.dumps(_execution_metadata()))
                 print(
-                    f"Compass telemetry: full content to {project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
+                    f"Compass telemetry: execution content and input references to {project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
                     file=sys.stderr,
                 )
             yield root

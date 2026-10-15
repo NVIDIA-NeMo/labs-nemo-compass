@@ -47,7 +47,7 @@ from insight_agent.insights_generation.config import (
 from insight_agent.insights_generation.defaults import DEFAULT_MAX_TOKENS, DEFAULT_MODEL
 from insight_agent.insights_generation.insight_compilation import InsightCompilation
 from insight_agent.insights_generation.validation import ProblemValidation
-from insight_agent.telemetry import span, telemetry_session
+from insight_agent.telemetry import record_input_metadata, span, telemetry_session
 from insight_agent.trace_loaders.atif import ATIFTraceLoader
 from insight_agent.trace_loaders.braintrust import (
     BRAINTRUST_DEFAULT_MAX_TRACES,
@@ -372,12 +372,10 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
     async with output.progress():
         with span("ingestion") as record:
             record.set_input(config.trace)
-            snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
-            if record.is_recording():
-                for index, trace in enumerate(snapshot):
-                    with span("input_trace") as input_record:
-                        input_record.set_input({"index": index, "trace": trace})
+            loader = _configured_trace_loader(config.trace)
+            snapshot = await asyncio.to_thread(loader.load)
             record.set_output({"trace_count": len(snapshot)})
+        record_input_metadata(config.trace, loader, snapshot)
         output.trace_count = len(snapshot)
         output.activity = "Checking prerequisites"
 

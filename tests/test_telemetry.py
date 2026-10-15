@@ -96,7 +96,7 @@ def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys,
     "api_key,project", [("", "custom-project"), ("test-key", ""), ("test-key", "custom-project")]
 )
 def test_cli_telemetry_in_fresh_process(tmp_path, api_key, project):
-    """Exercise CLI opt-in, library instrumentation, full inputs, and YAML stdout together."""
+    """Exercise CLI opt-in, input provenance, library instrumentation, and YAML stdout."""
     source = tmp_path / "input.jsonl"
     source.write_text(
         Trace(
@@ -214,9 +214,19 @@ def _run_cli(source, enabled):
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)
         assert json.loads(str((root.attributes or {})["output.value"]))["insights"] == []
-        source = next(r for r in records if r.name == "input_trace")
-        attrs = json.loads(str((source.attributes or {})["input.value"]))["trace"]["attributes"]
-        assert attrs == {"items": list(range(30)), "text": "x" * 5000}
+        from hashlib import sha256
+        from pathlib import Path
+
+        provenance = metadata["compass.input"]
+        assert provenance["source_type"] == "filesystem"
+        assert provenance["trace_count"] == 1
+        assert provenance["traces"] == [
+            {"id": "input", "source_url": Path(source).as_uri() + "#L1"}
+        ]
+        assert provenance["files"] == [
+            {"path": source, "sha256": sha256(Path(source).read_bytes()).hexdigest()}
+        ]
+        assert provenance["snapshot_saved"] is False
         assert any(r.name == "code_execution" for r in records)
         assert not next(r for r in records if r.name == "failed_tool").status.is_ok
         model = next(

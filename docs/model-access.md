@@ -107,3 +107,34 @@ of trace content before analysis; choose inputs and endpoints appropriate for yo
 
 The CLI writes insights to a local YAML file or stdout. With telemetry disabled it
 does not publish findings back to the trace platform. [Output details](results.md#saved-output).
+
+### Finding the inputs of a Compass run
+
+When Compass telemetry is enabled, open the root `compass` span in LangSmith and
+look for `compass.input` in its metadata. This describes the input corpus without
+copying input traces into telemetry spans:
+
+- `source_type` and `selection` identify the configured loader, query, filters,
+  time window, and limit where applicable.
+- `description` contains the loader's resolved source details and corpus counts,
+  including environment-resolved endpoints and project IDs where available.
+- `trace_count` and `traces` record the loaded trace count and each input trace's
+  ID and source URL. HTTP(S) links open the original platform; file links
+  identify local files and, where supported, line numbers. A null URL means the
+  source supplies no link; use the source coordinates and trace ID instead.
+- `files` records absolute paths and SHA-256 hashes for local inputs, including
+  files in export directories and auxiliary Langfuse score files. Hashes are read
+  after ingestion; an unavailable file is marked explicitly.
+- `normalized_sha256` fingerprints the exact normalized corpus consumed by Compass:
+  each trace's UTF-8 `model_dump_json()` followed by a newline, in snapshot order.
+  This is distinct from the hashes of the original file bytes.
+
+This works for all live platform loaders and file loaders (canonical JSONL, Gym,
+ATIF, and native platform exports). A hash identifies content but cannot retrieve
+it. `snapshot_saved: false` makes explicit that Compass does not archive or upload
+an input snapshot. Preserve the original files yourself; local file URLs are not
+accessible from other machines, and live records may change or expire.
+
+The `ingestion` span still measures loading, and subsequent spans describe
+Compass's analysis. Model and tool spans can contain input excerpts used during
+that analysis; this change does not redact their execution content.
