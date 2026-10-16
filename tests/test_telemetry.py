@@ -222,16 +222,13 @@ def _run_cli(source, enabled):
 
         provenance = {
             key.removeprefix("compass.input."): json.loads(value)
-            if key.rsplit(".", 1)[-1] in {"selection", "description", "traces", "files"}
+            if key.rsplit(".", 1)[-1] in {"selection", "description", "files"}
             else value
             for key, value in metadata.items()
             if key.startswith("compass.input.")
         }
         assert provenance["source_type"] == "filesystem"
         assert provenance["trace_count"] == 1
-        assert provenance["traces"] == [
-            {"id": "input", "source_url": Path(source).as_uri() + "#L1"}
-        ]
         assert provenance["files"] == [
             {"path": source, "sha256": sha256(Path(source).read_bytes()).hexdigest()}
         ]

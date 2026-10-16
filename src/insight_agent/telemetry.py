@@ -43,17 +43,11 @@ class FileReference(TypedDict):
     error: NotRequired[str]
 
 
-class TraceReference(TypedDict):
-    id: str
-    source_url: str | None
-
-
 class InputMetadata(TypedDict):
     source_type: str
     selection: dict[str, JsonValue]
     description: TraceDescription
     trace_count: int
-    traces: list[TraceReference]
     files: list[FileReference]
     normalized_sha256: str
     snapshot_saved: Literal[False]
@@ -102,9 +96,7 @@ def _input_metadata(
             files.append(_file_metadata(value))
 
     digest = hashlib.sha256()
-    references: list[TraceReference] = []
     for item in snapshot:
-        references.append({"id": item.id, "source_url": item.source_url})
         digest.update(item.model_dump_json().encode("utf-8"))
         digest.update(b"\n")
     return {
@@ -112,7 +104,6 @@ def _input_metadata(
         "selection": config.model_dump(mode="json", exclude_none=True),
         "description": description,
         "trace_count": len(snapshot),
-        "traces": references,
         "files": files,
         "normalized_sha256": digest.hexdigest(),
         "snapshot_saved": False,
@@ -123,7 +114,7 @@ def _input_metadata_fields(metadata: InputMetadata) -> dict[str, str | int | boo
     """Keep provenance within LangSmith's scalar metadata value limits.
 
     The deployed OTLP mapper drops strings of 500 or more characters. Numbered
-    parts preserve long JSON values without truncating references or file details.
+    parts preserve long JSON values without truncating source or file details.
     """
     fields: dict[str, str | int | bool] = {}
     for key, value in metadata.items():
