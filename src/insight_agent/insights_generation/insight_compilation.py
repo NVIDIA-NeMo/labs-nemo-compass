@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Literal
 
-from nooa import Agent, strategy
+from nooa import Agent, no_trace, strategy
 from nooa.config import CodeActConfig
 from nooa.strategies import CodeActStrategy
 from nooa.strategy_validation import InvariantError
@@ -18,6 +18,7 @@ from pydantic.json_schema import SkipJsonSchema
 from insight_agent.compass_signals._trace import walk_spans
 from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
+from insight_agent.telemetry import span
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -106,19 +107,56 @@ class EvidenceCompletion(BaseModel):
             )
         return matches, unknown
 
-    def apply(self, snapshot: TraceSnapshot, run_timestamp: datetime) -> Insight:
+    def apply(
+        self,
+        snapshot: TraceSnapshot,
+        run_timestamp: datetime,
+        *,
+        limitations: list[str] | None = None,
+    ) -> Insight:
         """Add matching evidence, or keep the insight unchanged if the scan fails."""
-        try:
-            matches, unknown = self.scan(snapshot)
-        except Exception as error:
-            warnings.warn(
-                f"The evidence scan did not complete for {self.insight.name!r}: "
-                f"{type(error).__name__}: {str(error)[:300]}. "
-                "The insight keeps its existing references. The scan added no new references.",
-                stacklevel=2,
+        with span("evidence_scan") as record:
+            record.set_input({"insight_name": self.insight.name, "trace_count": len(snapshot)})
+            try:
+                matches, unknown = self.scan(snapshot)
+            except Exception as error:
+                skipped = (
+                    self.predicate is None
+                    and bool(self.unresolved_reason and self.unresolved_reason.strip())
+                    and not self.checks
+                )
+                status = "skipped" if skipped else "failed"
+                reason = str(error)[:300]
+                record.set_output(
+                    {
+                        "status": status,
+                        "reason": reason,
+                        "error_type": None if skipped else type(error).__name__,
+                    }
+                )
+                if limitations is not None:
+                    limitations.append(
+                        f"Evidence scan {status} for {self.insight.name!r}: {reason}. Existing references were retained."
+                    )
+                warnings.warn(
+                    f"The evidence scan did not complete for {self.insight.name!r}: "
+                    f"{type(error).__name__}: {reason}. "
+                    "The insight keeps its existing references. The scan added no new references.",
+                    stacklevel=2,
+                )
+                return self.insight
+            record.set_output(
+                {
+                    "status": "incomplete" if unknown else "complete",
+                    "match_count": len(matches),
+                    "unknown_count": unknown,
+                }
             )
-            return self.insight
         if unknown:
+            if limitations is not None:
+                limitations.append(
+                    f"Evidence scan incomplete for {self.insight.name!r}: {unknown} of {len(snapshot)} source traces could not be classified; additional supporting traces may exist."
+                )
             warnings.warn(
                 f"Evidence scan incomplete for {self.insight.name!r}: "
                 f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
@@ -130,8 +168,8 @@ class EvidenceCompletion(BaseModel):
         for item in matches:
             previous = evidence.get(item.trace_id, item)
             spans = {span.span_id: span for span in previous.spans}
-            for span in item.spans:
-                spans.setdefault(span.span_id, span)
+            for evidence_span in item.spans:
+                spans.setdefault(evidence_span.span_id, evidence_span)
             evidence[item.trace_id] = previous.model_copy(update={"spans": list(spans.values())})
         return self.insight.model_copy(
             update={
@@ -158,18 +196,25 @@ def _validate_completions(
 
 
 class InsightCompilation(Agent):
+    @no_trace
     async def compile_insights(
         self,
         compass_signals: list[CompassSignalResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
         run_timestamp: datetime,
+        *,
+        limitations: list[str] | None = None,
     ) -> list[Insight]:
         completions = await self._compile_insights(
             compass_signals, trace_snapshot, existing_insights, run_timestamp
         )
-        return [completion.apply(trace_snapshot, run_timestamp) for completion in completions]
+        return [
+            completion.apply(trace_snapshot, run_timestamp, limitations=limitations)
+            for completion in completions
+        ]
 
+    @no_trace
     @strategy(CodeActStrategy(config=CodeActConfig(postconditions=[_validate_completions])))
     async def _compile_insights(
         self,

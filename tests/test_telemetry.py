@@ -83,7 +83,7 @@ def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys,
     )
     with (
         patch("insight_agent.telemetry.enable_tracing") as enable,
-        patch("insight_agent.telemetry.exporters.otlp"),
+        patch("insight_agent.telemetry.OTLPSpanExporter"),
         patch("insight_agent.telemetry.shutdown_traces"),
     ):
         with telemetry_session(config):
@@ -96,7 +96,7 @@ def test_analyzing_telemetry_project_checks_source_endpoint(monkeypatch, capsys,
     "api_key,project", [("", "custom-project"), ("test-key", ""), ("test-key", "custom-project")]
 )
 def test_cli_telemetry_in_fresh_process(tmp_path, api_key, project):
-    """Exercise CLI opt-in, library instrumentation, full inputs, and YAML stdout together."""
+    """Exercise CLI opt-in, input provenance, library instrumentation, and YAML stdout."""
     source = tmp_path / "input.jsonl"
     source.write_text(
         Trace(
@@ -139,6 +139,7 @@ def _run_cli(source, enabled):
     from nooa import Agent, strategy
     from nooa.strategies import CodeActStrategy
     from nooa.unifiedllm import CompletionClient, FakeLLMClient, LLMResponse, ToolCall
+    from opentelemetry.exporter.otlp.proto.http import Compression
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
     from insight_agent.cli.main import main
@@ -188,7 +189,7 @@ def _run_cli(source, enabled):
 
     exporter = InMemorySpanExporter()
     args = ["--trace.filesystem.path", str(source)]
-    with patch("insight_agent.telemetry.exporters.otlp", return_value=exporter) as factory:
+    with patch("insight_agent.telemetry.OTLPSpanExporter", return_value=exporter) as factory:
         with patch("insight_agent.cli.main._run_compass_signals", analyze):
             assert main(args) == 0
         assert factory.called == enabled
@@ -197,12 +198,14 @@ def _run_cli(source, enabled):
         assert not records
     else:
         factory.assert_called_once_with(
-            "https://telemetry.example.com/api/v1/otel/v1/traces",
-            {
+            endpoint="https://telemetry.example.com/api/v1/otel/v1/traces",
+            headers={
                 "x-api-key": "test-key",
                 "Langsmith-Project": "custom-project",
                 "X-Tenant-Id": "telemetry-workspace",
             },
+            compression=Compression.Gzip,
+            timeout=60,
         )
         root = next(r for r in records if r.name == "compass")
         metadata = json.loads(str((root.attributes or {})["metadata"]))
@@ -213,6 +216,19 @@ def _run_cli(source, enabled):
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)
         assert json.loads(str((root.attributes or {})["output.value"]))["insights"] == []
+
+        provenance = {
+            key.removeprefix("compass.input."): value
+            for key, value in metadata.items()
+            if key.startswith("compass.input.")
+        }
+        assert provenance["source_type"] == "filesystem"
+        assert provenance["trace_count"] == 1
+        assert provenance["source_path"] == source
+        assert provenance["snapshot_saved"] is False
+        inputs = json.loads(str((root.attributes or {})["input.value"]))
+        assert inputs["input_source"]["source_path"] == source
+        assert inputs["input_source"]["normalized_sha256"] == provenance["normalized_sha256"]
         ingestion = next(r for r in records if r.name == "ingestion")
         assert json.loads(str((ingestion.attributes or {})["output.value"])) == {"trace_count": 1}
         assert any(r.name == "code_execution" for r in records)
