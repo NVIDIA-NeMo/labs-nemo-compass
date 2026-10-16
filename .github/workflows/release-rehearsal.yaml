@@ -14,13 +14,14 @@ jobs:
       release-ref: ${{ github.event.pull_request.head.sha }}
   inspect:
     needs: validate
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ needs.validate.outputs.commit }}
-          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: release-distributions
@@ -36,6 +37,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
           test "$RELEASE_TAG" = "v0.1.0"
           test "$PRERELEASE" = "false"
+          git push --dry-run origin "$RELEASE_COMMIT:refs/tags/$RELEASE_TAG"
           cd dist
           sha256sum --check SHA256SUMS
           test -f compass-0.1.0-py3-none-any.whl
