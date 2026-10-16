@@ -7,11 +7,18 @@ Field descriptions define the exported JSON keys. These contracts describe work
 performed by Compass; source records are not synthetic execution spans.
 """
 
-from typing import Literal
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
+from insight_agent.config import (
+    AnomalyAndPatternsSignalConfig,
+    EthosDivergenceConfig,
+    GraderFailurePatternsConfig,
+    ToolIssueSignalConfig,
+    UserSentimentConfig,
+)
 from insight_agent.insight import Insight, Rating
 
 
@@ -23,8 +30,30 @@ class IngestionOutput(TelemetryModel):
     trace_count: int = Field(ge=0, description="Number of input traces loaded for this run.")
 
 
-class SignalInput(TelemetryModel):
+SignalConfig = TypeVar("SignalConfig", bound=BaseModel)
+
+
+class SignalInput(TelemetryModel, Generic[SignalConfig]):
     trace_count: int = Field(ge=0, description="Number of input traces available to this signal.")
+    config: SignalConfig = Field(
+        description="Effective settings for this signal, including defaults."
+    )
+
+
+class EthosSignalInput(SignalInput[EthosDivergenceConfig]):
+    ethos: str | None = Field(
+        default=None,
+        description="Exact ethos text supplied to this analysis; null when analysis has not started or was skipped.",
+    )
+
+
+SIGNAL_INPUT_TYPES = {
+    "anomaly_and_patterns": SignalInput[AnomalyAndPatternsSignalConfig],
+    "tool_issues": SignalInput[ToolIssueSignalConfig],
+    "ethos_divergence": EthosSignalInput,
+    "grader_failure_patterns": SignalInput[GraderFailurePatternsConfig],
+    "user_sentiment": SignalInput[UserSentimentConfig],
+}
 
 
 class SignalOutput(TelemetryModel):

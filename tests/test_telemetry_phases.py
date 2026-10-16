@@ -244,3 +244,65 @@ def test_failed_phase_waits_for_sibling_cancellation(monkeypatch, tmp_path, capt
         and "CancelledError" in str(event.attributes.get("exception.type"))
         for event in cancelled.events
     )
+
+
+def test_signal_inputs_capture_effective_settings_and_consumed_ethos(
+    monkeypatch, tmp_path, captured_spans
+):
+    from insight_agent.compass_signals.ethos_divergence import ethos_divergence_detector as ethos
+    from insight_agent.telemetry_framework import SPAN_CONTRACTS
+
+    ethos_path = tmp_path / "ETHOS.md"
+    original_text = "# Purpose\nHelp people draw. Preserve their work.\n"
+    ethos_path.write_text(original_text)
+    consumed = []
+
+    async def detect(snapshot, llm, text):
+        # The exported text must be what the analysis received, even if the file changes.
+        consumed.append(text)
+        ethos_path.write_text("Changed after ingestion")
+        return []
+
+    async def analyze(self, snapshot):
+        return CompassSignalResult(signal_name=self.name, problems=())
+
+    monkeypatch.setattr(ethos, "detect_ethos_divergence", detect)
+    monkeypatch.setattr(AnomalyAndPatternsCompassSignal, "analyze", analyze)
+    config = CompassSignalsConfig(
+        anomaly_and_patterns={"minimum_independent_traces": 7},
+        tool_issues={"retry_threshold": 5},
+        ethos_divergence={"ethos_path": ethos_path},
+        grader_failure_patterns={"max_tool_rounds": 3},
+    )
+    asyncio.run(cli._run_compass_signals(config, _snapshot(), lambda: FakeLLMClient([])))
+    spans = {span.name: span for span in captured_spans.get_finished_spans()}
+    for key, settings in config:
+        name = f"signal.{key}"
+        payload = json.loads(spans[name].attributes["input.value"])
+        assert payload["trace_count"] == 2
+        assert payload["config"] == settings.model_dump(mode="json")
+        contract = SPAN_CONTRACTS[name].input
+        assert contract is not None
+        contract.validate_python(payload)
+    assert consumed == [original_text]
+    assert (
+        json.loads(spans["signal.ethos_divergence"].attributes["input.value"])["ethos"]
+        == original_text
+    )
+
+
+def test_skipped_ethos_records_config_without_claiming_consumed_text(captured_spans):
+    config = CompassSignalsConfig(
+        anomaly_and_patterns=False,
+        tool_issues=False,
+        user_sentiment=False,
+        grader_failure_patterns=False,
+    )
+    asyncio.run(cli._run_compass_signals(config, _snapshot(), lambda: FakeLLMClient([])))
+    (record,) = captured_spans.get_finished_spans()
+    assert json.loads(record.attributes["input.value"]) == {
+        "trace_count": 2,
+        "config": {"ethos_path": None},
+        "ethos": None,
+    }
+    assert _output(record)["skip_reason"] == "No ethos document"

@@ -34,7 +34,14 @@ from rich.console import Console
 from insight_agent import telemetry_models as tm
 from insight_agent.cli.output import RunOutput, RunResult, display_name
 from insight_agent.compass_signals.builtins import registered_builtin_signals
-from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
+from insight_agent.compass_signals.compass_signals import (
+    CompassSignal,
+    CompassSignalResult,
+    Problem,
+)
+from insight_agent.compass_signals.ethos_divergence.ethos_divergence_detector import (
+    EthosDivergenceCompassSignal,
+)
 from insight_agent.config import CompassSignalsConfig, RunConfig, TraceConfig
 from insight_agent.insight import Insight, load_insights, resolve_trace_links
 from insight_agent.insights_generation.confidence import InsightConfidence
@@ -253,14 +260,22 @@ async def _run_compass_signals(
             progress(tuple(name for name in registry.names if name in active))
 
     async def analyze(name: str) -> CompassSignalResult:
-        def started() -> None:
+        signal_key = name.replace("-", "_")
+        inputs = tm.SIGNAL_INPUT_TYPES[signal_key](
+            trace_count=len(snapshot), config=getattr(config, signal_key)
+        )
+
+        def started(signal: CompassSignal) -> None:
+            if isinstance(signal, EthosDivergenceCompassSignal):
+                assert isinstance(inputs, tm.EthosSignalInput)
+                inputs.ethos = signal.ethos
+                record.set_input(inputs)
             active.add(name)
             changed()
 
         try:
-            signal_key = name.replace("-", "_")
             with span(f"signal.{signal_key}") as record:
-                record.set_input(tm.SignalInput(trace_count=len(snapshot)))
+                record.set_input(inputs)
                 result = await registry.analyze(name, snapshot, on_start=started)
                 record.set_output(tm.SignalOutput.from_result(result))
                 return result

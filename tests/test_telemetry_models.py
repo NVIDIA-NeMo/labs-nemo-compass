@@ -44,3 +44,8 @@ def test_run_input_fields_have_descriptions_including_nested_config():
     for definition in [schema, *schema.get("$defs", {}).values()]:
         for name, field in definition.get("properties", {}).items():
             assert field.get("description"), f"{definition['title']}.{name}"
+
+
+@pytest.mark.parametrize("model", telemetry_models.SIGNAL_INPUT_TYPES.values())
+def test_signal_configuration_fields_are_annotated(model):
+    test_phase_contract_fields_have_descriptions_including_nested_models(model)

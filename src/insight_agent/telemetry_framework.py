@@ -538,7 +538,10 @@ def _contract(
 SPAN_CONTRACTS = {
     "compass": _contract("One CLI analysis run.", RunInput, phase.RunOutput),
     "ingestion": _contract("Load the configured input source.", TraceConfig, phase.IngestionOutput),
-    "signal.*": _contract("One configured Compass signal.", phase.SignalInput, phase.SignalOutput),
+    **{
+        f"signal.{name}": _contract("One configured Compass signal.", model, phase.SignalOutput)
+        for name, model in phase.SIGNAL_INPUT_TYPES.items()
+    },
     "validation": _contract(
         "Check candidates against code.", phase.ValidationInput, phase.ValidationOutput
     ),
