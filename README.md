@@ -48,7 +48,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
 | JSONL or ATIF files | [Trace files](docs/sources/files.md) |
 | Another trace store | [Convert your traces](docs/sources/custom.md) |
 
-If `insight-agent` is not found after installation, run `uv tool update-shell`
+If `compass` is not found after installation, run `uv tool update-shell`
 and restart your terminal.
 
 ## After your first run
