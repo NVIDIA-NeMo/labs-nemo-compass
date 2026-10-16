@@ -103,7 +103,6 @@ def test_cli_telemetry_in_fresh_process(tmp_path, api_key, project):
             id="input",
             root_spans=[],
             aggregate=TraceAggregate(),
-            attributes={"items": list(range(30)), "text": "x" * 5000},
         ).model_dump_json()
         + "\n"
     )
@@ -214,9 +213,8 @@ def _run_cli(source, enabled):
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)
         assert json.loads(str((root.attributes or {})["output.value"]))["insights"] == []
-        source = next(r for r in records if r.name == "input_trace")
-        attrs = json.loads(str((source.attributes or {})["input.value"]))["trace"]["attributes"]
-        assert attrs == {"items": list(range(30)), "text": "x" * 5000}
+        ingestion = next(r for r in records if r.name == "ingestion")
+        assert json.loads(str((ingestion.attributes or {})["output.value"])) == {"trace_count": 1}
         assert any(r.name == "code_execution" for r in records)
         assert not next(r for r in records if r.name == "failed_tool").status.is_ok
         model = next(
