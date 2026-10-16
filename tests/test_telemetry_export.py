@@ -94,21 +94,25 @@ def test_forwards_failure_and_exporter_lifecycle():
 
 
 @pytest.mark.parametrize(
-    "scope,name,expected",
+    "scope,name,method,expected",
     [
-        ("nooa.tracing", "generation", "agent.execute"),
-        ("nooa.tracing", "context_snapshot", "agent.context"),
-        ("openinference.instrumentation.litellm", "acompletion", "llm.chat_completion"),
-        ("openinference.instrumentation.litellm", "aresponses", "llm.responses"),
-        ("user-tools", "generation", "generation"),
+        ("nooa.tracing", "generation", None, "agent.execute"),
+        ("nooa.tracing", "generation", "review_trace", "agent.execute.review_trace"),
+        ("nooa.tracing", "generation", "_compile_insights", "agent.execute._compile_insights"),
+        ("nooa.tracing", "context_snapshot", None, "agent.context"),
+        ("openinference.instrumentation.litellm", "acompletion", None, "llm.chat_completion"),
+        ("openinference.instrumentation.litellm", "aresponses", None, "llm.responses"),
+        ("user-tools", "generation", "review_trace", "generation"),
     ],
 )
-def test_operation_names_preserve_identity_and_payload(scope, name, expected):
+def test_operation_names_preserve_identity_and_payload(scope, name, method, expected):
     captured = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(captured))
     with provider.get_tracer(scope).start_as_current_span(name) as span:
         span.set_attribute("input.value", "original content")
+        if method is not None:
+            span.set_attribute("agent.method", method)
     original = captured.get_finished_spans()[0]
     delegate = Mock(spec=SpanExporter)
     CompassSpanExporter(delegate).export([original])

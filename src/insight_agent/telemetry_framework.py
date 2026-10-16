@@ -553,6 +553,8 @@ SPAN_CONTRACTS = {
     ),
 }
 
+SPAN_CONTRACTS["agent.execute.*"] = SPAN_CONTRACTS["agent.execute"]
+
 SPAN_CONTRACTS["agent.context_snapshot"] = _contract(
     "Complete rendered system context for the agent, not an incremental update.", ContextText
 )

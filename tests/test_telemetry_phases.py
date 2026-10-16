@@ -4,7 +4,6 @@
 import asyncio
 import json
 from builtins import ExceptionGroup
-from functools import partial
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -18,6 +17,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from rich.console import Console
 
 import insight_agent.cli.main as cli
+import insight_agent.telemetry as telemetry
 from insight_agent.cli.output import RunOutput
 from insight_agent.compass_signals.anomaly_and_patterns.signal import (
     AnomalyAndPatternsCompassSignal,
@@ -35,9 +35,7 @@ def captured_spans(monkeypatch):
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     tracer = OITracer(provider.get_tracer("phase-test"), config=TraceConfig())
-    monkeypatch.setattr(
-        cli, "span", partial(tracer.start_as_current_span, openinference_span_kind="chain")
-    )
+    monkeypatch.setattr(telemetry, "tracer", tracer)
     yield exporter
     provider.shutdown()
 
@@ -239,3 +237,10 @@ def test_failed_phase_waits_for_sibling_cancellation(monkeypatch, tmp_path, capt
         if child.parent:
             assert child.end_time <= by_id[child.parent.span_id].end_time
     assert not root.status.is_ok
+    cancelled = next(span for span in spans if span.name == "work.cancelled")
+    assert not cancelled.status.is_ok
+    assert any(
+        event.name == "exception"
+        and "CancelledError" in str(event.attributes.get("exception.type"))
+        for event in cancelled.events
+    )

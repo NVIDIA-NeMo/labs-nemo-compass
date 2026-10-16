@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -34,7 +35,20 @@ from trace_ingest.loaders.trace_loaders import TraceDescription, TraceLoader
 from trace_ingest.models import TraceSnapshot
 
 tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig())
-span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
+
+
+@contextmanager
+def span(name: str) -> Iterator[OpenInferenceSpan]:
+    """Record one Compass operation, including cancellation as interrupted work."""
+    with tracer.start_as_current_span(name, openinference_span_kind="chain") as record:
+        try:
+            yield record
+        except asyncio.CancelledError as error:
+            # OTel intentionally ignores BaseException subclasses. Cancellation is
+            # not a completed Compass operation, so retain the actual exception.
+            record.record_exception(error)
+            record.set_status(trace.StatusCode.ERROR)
+            raise
 
 
 class InputMetadata(BaseModel):

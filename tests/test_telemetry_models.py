@@ -34,7 +34,7 @@ def test_phase_contract_rejects_unknown_status_and_fields():
             {"status": "success", "problems": (), "limitations": ()}
         )
     with pytest.raises(ValidationError):
-        telemetry_models.ValidationOutput.model_validate({"retained": 1})
+        telemetry_models.ValidationOutput.model_validate({"unexpected": 1})
 
 
 def test_run_input_fields_have_descriptions_including_nested_config():
