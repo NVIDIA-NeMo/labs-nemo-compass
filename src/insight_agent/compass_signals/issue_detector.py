@@ -37,5 +37,8 @@ class IssueDetector(Agent):
         Include exact supporting trace IDs from the supplied snapshot. Every
         cited invocation must support the specific problem being reported. Group
         occurrences of the same issue; copied history is not a new occurrence.
+        Use supporting_trace_ids for the examples cited in the problem, and
+        candidate_trace_ids for all traces identified for that problem, including
+        those examples. If only the cited examples are known, both lists are the same.
         """
         ...

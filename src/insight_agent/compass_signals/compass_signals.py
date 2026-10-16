@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from insight_agent.traces import TraceSnapshot
 
@@ -16,15 +16,26 @@ class Problem(BaseModel):
     """A potential issue surfaced by one Compass Signal."""
 
     description: str = Field(min_length=1)
-    supporting_trace_ids: tuple[str, ...] = Field(min_length=1)
+    supporting_trace_ids: tuple[str, ...] = Field(
+        min_length=1,
+        description="Selected examples cited by the signal to support this problem; used for code validation and always included in candidate_trace_ids.",
+    )
     candidate_trace_ids: tuple[str, ...] = Field(
         default=(),
         description=(
-            "All trace IDs the signal found for this problem. This list may include supporting_trace_ids. "
-            "The compiler must check these traces against the final insight. "
-            "Other matches may exist in the snapshot. An empty list means the signal supplied no candidate list."
+            "All distinct trace IDs identified by the signal for this problem, including supporting_trace_ids. "
+            "When no broader list is supplied, this contains the supporting examples. "
+            "These are leads for compilation, not confirmed matches for the final insight or an exhaustive corpus scan."
         ),
     )
+
+    @model_validator(mode="after")
+    def include_supporting_candidates(self) -> Problem:
+        """Keep every cited example in the candidate set without changing the review sample."""
+        self.candidate_trace_ids = tuple(
+            dict.fromkeys((*self.candidate_trace_ids, *self.supporting_trace_ids))
+        )
+        return self
 
 
 class CompassSignalResult(BaseModel):

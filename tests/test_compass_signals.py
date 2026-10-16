@@ -16,6 +16,7 @@ from insight_agent.compass_signals.anomaly_and_patterns.signal import (
     problems_from_analysis,
     run_anomaly_and_patterns,
 )
+from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.compass_signals.tool_issues.signal import build_cards, problems_from_cards
 from insight_agent.compass_signals.user_sentiment import signal as sentiment
 from insight_agent.config import CompassSignalsConfig
@@ -159,3 +160,42 @@ def test_sentiment_explicit_backends_check_only_local_dependencies(monkeypatch):
     )
     assert remote.check_prerequisites(snapshot) is None
     assert remote.embedding_generator.litellm == remote.config.litellm
+
+
+@pytest.mark.parametrize("candidates", [None, (), ("other", "other", "example")])
+def test_problem_candidates_include_examples_and_preserve_broader_leads(candidates):
+    values = {"description": "Tool failed", "supporting_trace_ids": ("example", "second")}
+    if candidates is not None:
+        values["candidate_trace_ids"] = candidates
+    problem = Problem.model_validate(values)
+    expected = ("other", "example", "second") if candidates else ("example", "second")
+    assert problem.candidate_trace_ids == expected
+    assert problem.supporting_trace_ids == ("example", "second")
+    assert Problem.model_validate_json(problem.model_dump_json()) == problem
+
+
+@pytest.mark.parametrize("cross_tool", [False, True])
+def test_recurring_failures_expose_all_candidates(cross_tool):
+    trace_ids = ("first", "second", "third")
+    group: dict[str, object] = dict(
+        event_count=4, independent_trace_count=3, trace_ids=trace_ids, representatives=({},)
+    )
+    if cross_tool:
+        group.update(message_signature="timeout", tool_names=("search", "fetch"))
+    else:
+        group.update(signature="search: timeout", top_tools=("search",))
+    analysis = AnomalyAndPatternsAnalysis.model_validate(
+        dict(
+            prepared=(),
+            failure_events=(),
+            anomalies=(),
+            trajectory_groups=None,
+            verdict_groups=(),
+            failure_groups=() if cross_tool else (group,),
+            cross_tool_failure_groups=(group,) if cross_tool else (),
+            digest="",
+        )
+    )
+    (problem,) = problems_from_analysis(analysis)
+    assert problem.candidate_trace_ids == trace_ids
+    assert problem.supporting_trace_ids == trace_ids

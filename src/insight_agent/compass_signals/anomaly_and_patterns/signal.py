@@ -1015,6 +1015,7 @@ def problems_from_analysis(result: AnomalyAndPatternsAnalysis) -> tuple[Problem,
                     f"Affected tools: {tools}."
                 ),
                 supporting_trace_ids=group.trace_ids,
+                candidate_trace_ids=group.trace_ids,
             )
         )
 
@@ -1032,6 +1033,7 @@ def problems_from_analysis(result: AnomalyAndPatternsAnalysis) -> tuple[Problem,
                     "whether those occurrences share a cause."
                 ),
                 supporting_trace_ids=group.trace_ids,
+                candidate_trace_ids=group.trace_ids,
             )
         )
 
