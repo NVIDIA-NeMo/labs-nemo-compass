@@ -58,7 +58,7 @@ and restart your terminal.
 - [Data and model access](docs/model-access.md) — configure your inference endpoint and understand where data goes.
 - [Configuration reference](docs/configuration.md) — overrides, limits, and repeatable runs.
 
-[Development](DEVELOPMENT.md) · [Architecture](docs/architecture.md)
+[Purpose and expectations](ETHOS.md) · [Development](DEVELOPMENT.md) · [Architecture](docs/architecture.md)
 
 # Research Topics 
 
