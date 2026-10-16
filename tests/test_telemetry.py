@@ -216,7 +216,6 @@ def _run_cli(source, enabled):
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)
         assert json.loads(str((root.attributes or {})["output.value"]))["insights"] == []
-        from insight_agent.telemetry import InputMetadata, RunInput
 
         provenance = {
             key.removeprefix("compass.input."): value
@@ -227,10 +226,9 @@ def _run_cli(source, enabled):
         assert provenance["trace_count"] == 1
         assert provenance["source_path"] == source
         assert provenance["snapshot_saved"] is False
-        inputs = RunInput.model_validate_json(str((root.attributes or {})["input.value"]))
-        assert isinstance(inputs.input_source, InputMetadata)
-        assert inputs.input_source.source_path == source
-        assert inputs.input_source.normalized_sha256 == provenance["normalized_sha256"]
+        inputs = json.loads(str((root.attributes or {})["input.value"]))
+        assert inputs["input_source"]["source_path"] == source
+        assert inputs["input_source"]["normalized_sha256"] == provenance["normalized_sha256"]
         ingestion = next(r for r in records if r.name == "ingestion")
         assert json.loads(str((ingestion.attributes or {})["output.value"])) == {"trace_count": 1}
         assert any(r.name == "code_execution" for r in records)

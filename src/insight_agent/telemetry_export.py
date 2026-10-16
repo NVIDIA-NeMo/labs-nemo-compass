@@ -1,38 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Present framework operations and errors without changing execution identity."""
+"""Present framework operations without changing execution identity."""
 
 import json
 from collections.abc import Sequence
 from operator import attrgetter
 
-from opentelemetry.sdk.trace import Event, ReadableSpan
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
-from opentelemetry.sdk.util import ns_to_iso_str
-from opentelemetry.trace import SpanContext, StatusCode
+from opentelemetry.trace import SpanContext
 
 
 class _ExportSpan(ReadableSpan):
-    """Read-only export view; the ended SDK span remains untouched.
+    """Read-only name override; delegate all other fields to the ended SDK span."""
 
-    SDK spans cannot accept events after ending. Delegate the public snapshot
-    fields instead of constructing a new SDK snapshot or mutating its internals.
-    """
-
-    def __init__(
-        self, original: ReadableSpan, event: Event | None = None, name: str | None = None
-    ) -> None:
+    def __init__(self, original: ReadableSpan, name: str) -> None:
         self._original = original
-        self._export_name = name or original.name
-        self._export_events = (*original.events, event) if event else original.events
+        self._export_name = name
 
     name = property(attrgetter("_export_name"))
     context = property(attrgetter("_original.context"))
     parent = property(attrgetter("_original.parent"))
     resource = property(attrgetter("_original.resource"))
     attributes = property(attrgetter("_original.attributes"))
-    events = property(attrgetter("_export_events"))
+    events = property(attrgetter("_original.events"))
     links = property(attrgetter("_original.links"))
     kind = property(attrgetter("_original.kind"))
     instrumentation_info = property(attrgetter("_original.instrumentation_info"))
@@ -47,40 +39,10 @@ class _ExportSpan(ReadableSpan):
     def to_json(self, indent: int | None = 4) -> str:
         document = json.loads(self._original.to_json(indent=indent))
         document["name"] = self.name
-        document["events"] = [
-            {
-                "name": event.name,
-                "timestamp": ns_to_iso_str(event.timestamp),
-                "attributes": dict(event.attributes or {}),
-            }
-            for event in self._export_events
-        ]
         return json.dumps(document, indent=indent)
 
     def get_span_context(self) -> SpanContext | None:
         return self._original.get_span_context()
-
-
-def _with_exception_event(span: ReadableSpan) -> ReadableSpan:
-    if span.status.status_code != StatusCode.ERROR or any(
-        event.name == "exception" for event in span.events
-    ):
-        return span
-    attributes = span.attributes or {}
-    exception = {
-        key: attributes[key]
-        for key in ("exception.type", "exception.message", "exception.stacktrace")
-        if key in attributes
-    }
-    if "exception.type" not in exception and "error.type" in attributes:
-        exception["exception.type"] = attributes["error.type"]
-    if "exception.message" not in exception:
-        message = attributes.get("error.message")
-        if message:
-            exception["exception.message"] = message
-    if not exception:
-        return span
-    return _ExportSpan(span, Event("exception", exception, timestamp=span.end_time))
 
 
 def _with_operation_name(span: ReadableSpan) -> ReadableSpan:
@@ -108,15 +70,13 @@ def _with_operation_name(span: ReadableSpan) -> ReadableSpan:
 
 
 class CompassSpanExporter(SpanExporter):
-    """Forward spans with explicit error events without changing execution identity."""
+    """Forward spans with readable operation names."""
 
     def __init__(self, delegate: SpanExporter) -> None:
         self._delegate = delegate
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        return self._delegate.export(
-            tuple(_with_operation_name(_with_exception_event(span)) for span in spans)
-        )
+        return self._delegate.export(tuple(_with_operation_name(span) for span in spans))
 
     def shutdown(self) -> None:
         self._delegate.shutdown()

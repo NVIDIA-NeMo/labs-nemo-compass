@@ -19,11 +19,6 @@ from insight_agent.compass_signals._trace import walk_spans
 from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
 from insight_agent.telemetry import span
-from insight_agent.telemetry_models import (
-    EvidenceScanFailure,
-    EvidenceScanInput,
-    EvidenceScanResult,
-)
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -121,9 +116,7 @@ class EvidenceCompletion(BaseModel):
     ) -> Insight:
         """Add matching evidence, or keep the insight unchanged if the scan fails."""
         with span("evidence_scan") as record:
-            record.set_input(
-                EvidenceScanInput(insight_name=self.insight.name, trace_count=len(snapshot))
-            )
+            record.set_input({"insight_name": self.insight.name, "trace_count": len(snapshot)})
             try:
                 matches, unknown = self.scan(snapshot)
             except Exception as error:
@@ -133,11 +126,11 @@ class EvidenceCompletion(BaseModel):
                     and not self.checks
                 )
                 record.set_output(
-                    EvidenceScanFailure(
-                        status="skipped" if skipped else "failed",
-                        reason=str(error)[:300],
-                        error_type=None if skipped else type(error).__name__,
-                    )
+                    {
+                        "status": "skipped" if skipped else "failed",
+                        "reason": str(error)[:300],
+                        "error_type": None if skipped else type(error).__name__,
+                    }
                 )
                 if limitations is not None:
                     limitations.append(
@@ -151,11 +144,11 @@ class EvidenceCompletion(BaseModel):
                 )
                 return self.insight
             record.set_output(
-                EvidenceScanResult(
-                    status="incomplete" if unknown else "complete",
-                    match_count=len(matches),
-                    unknown_count=unknown,
-                )
+                {
+                    "status": "incomplete" if unknown else "complete",
+                    "match_count": len(matches),
+                    "unknown_count": unknown,
+                }
             )
             if unknown:
                 if limitations is not None:
