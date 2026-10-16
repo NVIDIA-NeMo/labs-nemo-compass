@@ -12,7 +12,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, Sp
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import Link, Status, StatusCode
 
-from insight_agent.telemetry_export import ExceptionEventExporter
+from insight_agent.telemetry_export import CompassSpanExporter
 
 
 def finished_span(status=StatusCode.ERROR, existing_exception=False, fallback=False):
@@ -49,7 +49,7 @@ def test_error_event_preserves_encoded_span_and_original(fallback):
     before = encode_spans([original])
     delegate = Mock(spec=SpanExporter)
     delegate.export.return_value = SpanExportResult.SUCCESS
-    exporter = ExceptionEventExporter(delegate)
+    exporter = CompassSpanExporter(delegate)
     assert exporter.export([original]) == SpanExportResult.SUCCESS
     forwarded = delegate.export.call_args.args[0][0]
     assert forwarded is not original
@@ -77,7 +77,7 @@ def test_error_event_preserves_encoded_span_and_original(fallback):
 def test_preserves_success_and_existing_exception(status, existing_exception):
     original = finished_span(status, existing_exception)
     delegate = Mock(spec=SpanExporter)
-    ExceptionEventExporter(delegate).export([original])
+    CompassSpanExporter(delegate).export([original])
     assert delegate.export.call_args.args[0][0] is original
 
 
@@ -85,9 +85,38 @@ def test_forwards_failure_and_exporter_lifecycle():
     delegate = Mock(spec=SpanExporter)
     delegate.export.return_value = SpanExportResult.FAILURE
     delegate.force_flush.return_value = False
-    exporter = ExceptionEventExporter(delegate)
+    exporter = CompassSpanExporter(delegate)
     assert exporter.export([]) == SpanExportResult.FAILURE
     assert exporter.force_flush(1234) is False
     delegate.force_flush.assert_called_once_with(1234)
     exporter.shutdown()
     delegate.shutdown.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "scope,name,expected",
+    [
+        ("nooa.tracing", "generation", "agent.execute"),
+        ("nooa.tracing", "context_snapshot", "agent.context"),
+        ("openinference.instrumentation.litellm", "acompletion", "llm.chat_completion"),
+        ("openinference.instrumentation.litellm", "aresponses", "llm.responses"),
+        ("user-tools", "generation", "generation"),
+    ],
+)
+def test_operation_names_preserve_identity_and_payload(scope, name, expected):
+    captured = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(captured))
+    with provider.get_tracer(scope).start_as_current_span(name) as span:
+        span.set_attribute("input.value", "original content")
+    original = captured.get_finished_spans()[0]
+    delegate = Mock(spec=SpanExporter)
+    CompassSpanExporter(delegate).export([original])
+    forwarded = delegate.export.call_args.args[0][0]
+    assert forwarded.name == expected
+    assert json.loads(forwarded.to_json())["name"] == expected
+    encoded = encode_spans([forwarded])
+    encoded.resource_spans[0].scope_spans[0].spans[0].name = name
+    assert encoded == encode_spans([original])
+    assert original.name == name
+    provider.shutdown()

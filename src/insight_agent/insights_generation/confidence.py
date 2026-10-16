@@ -7,13 +7,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nooa import Agent, strategy
+from nooa import Agent, no_trace, strategy
 from nooa.agentdoc import truncating_pformat
 from nooa.config import CodeActConfig
 from nooa.errors import GenerationAborted, GenerationError
 from nooa.strategies import CodeActStrategy
 from nooa.unifiedllm import UnifiedLLM
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from insight_agent.insight import Insight, Rating
 from insight_agent.insights_generation.codebase import CodebaseTools
@@ -37,7 +37,13 @@ def _trace_context(supporting_traces: tuple[Trace, ...]) -> str:
 class _Confidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    confidence: Rating
+    confidence: Rating = Field(
+        description=(
+            "Code support for the insight: high when behavior, root cause, scope, and remediation "
+            "hold up; med when behavior reproduces but another part is unconfirmed or wrong; "
+            "low when code or supporting traces contradict the central claim."
+        )
+    )
 
 
 class _ConfidenceAgent(Agent):
@@ -45,6 +51,7 @@ class _ConfidenceAgent(Agent):
         super().__init__(llm=llm)
         self.codebase = codebase
 
+    @no_trace  # The Compass confidence.insight span owns this operation.
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=_MAX_ITERATIONS)))
     async def rate(self, insight: Insight, supporting_traces: str) -> _Confidence:  # ty: ignore[empty-body] -- Nooa implements the ellipsis method.
         """Score the provided insight on confidence. The insight is derived from the

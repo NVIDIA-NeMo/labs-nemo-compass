@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Literal
 
-from nooa import Agent, strategy
+from nooa import Agent, no_trace, strategy
 from nooa.config import CodeActConfig
 from nooa.strategies import CodeActStrategy
 from nooa.strategy_validation import InvariantError
@@ -19,6 +19,11 @@ from insight_agent.compass_signals._trace import walk_spans
 from insight_agent.compass_signals.compass_signals import CompassSignalResult
 from insight_agent.insight import Insight, SpanEvidence, TraceEvidence
 from insight_agent.telemetry import span
+from insight_agent.telemetry_models import (
+    EvidenceScanFailure,
+    EvidenceScanInput,
+    EvidenceScanResult,
+)
 from insight_agent.traces import Trace, TraceSnapshot
 
 Decision = Literal["match", "no_match", "unknown"]
@@ -107,10 +112,18 @@ class EvidenceCompletion(BaseModel):
             )
         return matches, unknown
 
-    def apply(self, snapshot: TraceSnapshot, run_timestamp: datetime) -> Insight:
+    def apply(
+        self,
+        snapshot: TraceSnapshot,
+        run_timestamp: datetime,
+        *,
+        limitations: list[str] | None = None,
+    ) -> Insight:
         """Add matching evidence, or keep the insight unchanged if the scan fails."""
         with span("evidence_scan") as record:
-            record.set_input({"insight_name": self.insight.name, "trace_count": len(snapshot)})
+            record.set_input(
+                EvidenceScanInput(insight_name=self.insight.name, trace_count=len(snapshot))
+            )
             try:
                 matches, unknown = self.scan(snapshot)
             except Exception as error:
@@ -120,12 +133,16 @@ class EvidenceCompletion(BaseModel):
                     and not self.checks
                 )
                 record.set_output(
-                    {
-                        "status": "skipped" if skipped else "failed",
-                        "reason": str(error)[:300],
-                        "error_type": None if skipped else type(error).__name__,
-                    }
+                    EvidenceScanFailure(
+                        status="skipped" if skipped else "failed",
+                        reason=str(error)[:300],
+                        error_type=None if skipped else type(error).__name__,
+                    )
                 )
+                if limitations is not None:
+                    limitations.append(
+                        f"Evidence scan {'skipped' if skipped else 'failed'} for {self.insight.name!r}: {str(error)[:300]}. Existing references were retained."
+                    )
                 warnings.warn(
                     f"The evidence scan did not complete for {self.insight.name!r}: "
                     f"{type(error).__name__}: {str(error)[:300]}. "
@@ -134,13 +151,17 @@ class EvidenceCompletion(BaseModel):
                 )
                 return self.insight
             record.set_output(
-                {
-                    "status": "incomplete" if unknown else "complete",
-                    "match_count": len(matches),
-                    "unknown_count": unknown,
-                }
+                EvidenceScanResult(
+                    status="incomplete" if unknown else "complete",
+                    match_count=len(matches),
+                    unknown_count=unknown,
+                )
             )
             if unknown:
+                if limitations is not None:
+                    limitations.append(
+                        f"Evidence scan incomplete for {self.insight.name!r}: {unknown} of {len(snapshot)} source traces could not be classified; additional supporting traces may exist."
+                    )
                 warnings.warn(
                     f"Evidence scan incomplete for {self.insight.name!r}: "
                     f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
@@ -182,18 +203,25 @@ def _validate_completions(
 
 
 class InsightCompilation(Agent):
+    @no_trace
     async def compile_insights(
         self,
         compass_signals: list[CompassSignalResult],
         trace_snapshot: TraceSnapshot,
         existing_insights: list[Insight],
         run_timestamp: datetime,
+        *,
+        limitations: list[str] | None = None,
     ) -> list[Insight]:
         completions = await self._compile_insights(
             compass_signals, trace_snapshot, existing_insights, run_timestamp
         )
-        return [completion.apply(trace_snapshot, run_timestamp) for completion in completions]
+        return [
+            completion.apply(trace_snapshot, run_timestamp, limitations=limitations)
+            for completion in completions
+        ]
 
+    @no_trace
     @strategy(CodeActStrategy(config=CodeActConfig(postconditions=[_validate_completions])))
     async def _compile_insights(
         self,

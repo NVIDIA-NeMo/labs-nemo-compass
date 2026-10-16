@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, redirect_stdout
 from functools import partial
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal
 
 import nooa
 from nooa.tracing import enable_tracing, shutdown_traces
@@ -24,11 +24,11 @@ from openinference.instrumentation._spans import OpenInferenceSpan
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field
 
 from insight_agent.config import RunConfig
 from insight_agent.config import TraceConfig as SourceConfig
-from insight_agent.telemetry_export import ExceptionEventExporter
+from insight_agent.telemetry_export import CompassSpanExporter
 from insight_agent.version import __version__
 from trace_ingest.loaders.trace_loaders import TraceDescription, TraceLoader
 from trace_ingest.models import TraceSnapshot
@@ -37,121 +37,217 @@ tracer = OITracer(trace.get_tracer("compass", __version__), config=TraceConfig()
 span = partial(tracer.start_as_current_span, openinference_span_kind="chain")
 
 
-class FileReference(TypedDict):
-    path: str
-    sha256: str | None
-    error: NotRequired[str]
+class InputMetadata(BaseModel):
+    """Corpus identity and resolved source coordinates, never source trace contents.
+
+    Query filters and time bounds are already in the root span's typed input config.
+    The fingerprint identifies the analyzed content but cannot retrieve or archive it.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source_type: Literal[
+        "filesystem",
+        "gym",
+        "atif",
+        "mlflow_experiment",
+        "mlflow_export",
+        "langfuse",
+        "langfuse_trace_export_file",
+        "langsmith",
+        "langsmith_trace_export_file",
+        "braintrust",
+        "intake",
+    ] = Field(description="Configured loader that produced the normalized input corpus.")
+    trace_count: int = Field(
+        ge=0, description="Number of normalized input traces loaded for this run."
+    )
+    normalized_sha256: str = Field(
+        pattern=r"^[0-9a-f]{64}$",
+        description="SHA-256 of each normalized trace's UTF-8 model_dump_json() plus newline, in snapshot order; identifies content, not a retrievable archive.",
+    )
+    snapshot_saved: Literal[False] = Field(
+        default=False,
+        description="False because Compass does not save or upload a copy of its input corpus.",
+    )
+    max_traces: int | None = Field(
+        default=None,
+        ge=1,
+        description="Effective loader limit on source traces, including a loader default; null means no limit was reported, not that the source was exhausted.",
+    )
+    truncated: bool | None = Field(
+        default=None,
+        description="Whether the loader omitted traces from a local export because of its limit; null means completeness was not reported.",
+    )
+    export_trace_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of traces in the supplied local export before the loader applied its limit; does not establish completeness of the original platform export.",
+    )
+    ignored_score_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of Langfuse score records that could not be associated with a trace in the supplied export.",
+    )
+    endpoint: str | None = Field(
+        default=None,
+        description="Resolved source API endpoint or MLflow tracking URI, including environment-derived values; not the telemetry destination.",
+    )
+    project_id: str | None = Field(
+        default=None,
+        description="Resolved source platform project identifier, when supplied by the loader.",
+    )
+    experiment_id: str | None = Field(
+        default=None,
+        description="Resolved MLflow or Braintrust experiment identifier, when applicable.",
+    )
+    workspace: str | None = Field(
+        default=None, description="Intake workspace containing the input traces."
+    )
+    source_path: str | None = Field(
+        default=None,
+        description="Absolute path of the local input file or export directory; requires access to the originating filesystem.",
+    )
+    scores_path: str | None = Field(
+        default=None, description="Absolute path of the auxiliary Langfuse scores file, if used."
+    )
+    api_version: str | None = Field(
+        default=None,
+        description="Langfuse API/export version actually selected by the loader, if known.",
+    )
 
 
-class InputMetadata(TypedDict):
-    source_type: str
-    selection: dict[str, JsonValue]
-    description: TraceDescription
-    trace_count: int
-    files: list[FileReference]
-    normalized_sha256: str
-    snapshot_saved: Literal[False]
+class RunInput(RunConfig):
+    """Compass run configuration and complete resolved input provenance."""
+
+    input_source: InputMetadata | None = Field(
+        default=None,
+        description="Resolved source coordinates and normalized corpus identity after loading; null before ingestion completes. Source query and filters are in trace configuration.",
+    )
 
 
-def _file_metadata(path: Path) -> FileReference:
-    """Fingerprint a source file without exporting its contents."""
-    path = path.resolve()
-    try:
-        with path.open("rb") as stream:
-            digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        return {"path": str(path), "sha256": digest}
-    except OSError:
-        # A source may disappear after ingestion; telemetry must not prevent analysis.
-        return {"path": str(path), "sha256": None, "error": "file unavailable after ingestion"}
+class InputMetadataSummary(InputMetadata):
+    """Searchable scalar projection; complete coordinates remain in the root input."""
+
+    details_location: Literal["inputs.input_source"] = Field(
+        default="inputs.input_source",
+        description="Location of the complete typed source details; metadata omits coordinates of 500 or more characters because LangSmith drops them.",
+    )
+
+
+class ExecutionMetadata(BaseModel):
+    """Software identity of the Compass process that generated this trace."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+    compass_version: str = Field(
+        alias="compass.version", description="Installed Compass package version."
+    )
+    nooa_version: str = Field(
+        alias="nooa.version", description="Installed Nooa agent framework version."
+    )
+    python_version: str = Field(
+        alias="python.version", description="Python interpreter version running Compass."
+    )
+    git_sha: str | None = Field(
+        default=None,
+        alias="compass.git_sha",
+        description="Compass checkout HEAD commit, when running from a Git checkout.",
+    )
+    git_dirty: bool | None = Field(
+        default=None,
+        alias="compass.git_dirty",
+        description="Whether the Compass checkout has staged, unstaged, or non-ignored untracked changes at capture time.",
+    )
 
 
 def _input_metadata(
     config: SourceConfig, description: TraceDescription, snapshot: TraceSnapshot
 ) -> InputMetadata:
-    """Identify the loaded corpus, keeping trace bodies out of the run's metadata."""
+    """Identify the loaded corpus without per-trace lists or duplicate query settings."""
     source_type, source = next(
         (name, value) for name, value in config if name != "max_traces" and value is not None
     )
-    files: list[FileReference] = []
-    for value in source.model_dump().values():
-        if not isinstance(value, Path):
-            continue
-        if value.is_dir():
-            # These are the two loaders accepting directories of export files.
-            suffixes = (
-                {".jsonl"} if source_type == "langsmith_trace_export_file" else {".json", ".jsonl"}
-            )
-            files.extend(
-                _file_metadata(path)
-                for path in sorted(value.iterdir())
-                if path.is_file()
-                and (
-                    path.suffix.lower()
-                    if source_type == "langsmith_trace_export_file"
-                    else path.suffix
-                )
-                in suffixes
-            )
-        else:
-            files.append(_file_metadata(value))
-
+    configured = source.model_dump()
+    resolved = dict(description)
     digest = hashlib.sha256()
     for item in snapshot:
         digest.update(item.model_dump_json().encode("utf-8"))
         digest.update(b"\n")
-    return {
-        "source_type": source_type,
-        "selection": config.model_dump(mode="json", exclude_none=True),
-        "description": description,
-        "trace_count": len(snapshot),
-        "files": files,
-        "normalized_sha256": digest.hexdigest(),
-        "snapshot_saved": False,
+    coordinates = {
+        key: resolved.get(key)
+        for key in (
+            "project_id",
+            "experiment_id",
+            "workspace",
+            "api_version",
+            "max_traces",
+            "truncated",
+            "export_trace_count",
+            "ignored_score_count",
+        )
     }
+    if source_type == "intake":
+        query = resolved.get("query")
+        if isinstance(query, dict):
+            coordinates["max_traces"] = query.get("max_traces")
+    coordinates["api_version"] = coordinates["api_version"] or configured.get("api_version")
+    coordinates["endpoint"] = (
+        resolved.get("base_url")
+        or resolved.get("api_url")
+        or resolved.get("tracking_uri")
+        or configured.get("base_url")
+    )
+    for input_name, output_name in (("path", "source_path"), ("scores_path", "scores_path")):
+        path = configured.get(input_name)
+        if isinstance(path, Path):
+            coordinates[output_name] = str(path.resolve())
+    return InputMetadata.model_validate(
+        {
+            "source_type": source_type,
+            "trace_count": len(snapshot),
+            "normalized_sha256": digest.hexdigest(),
+            **coordinates,
+        }
+    )
 
 
 def _input_metadata_fields(metadata: InputMetadata) -> dict[str, str | int | bool]:
-    """Keep provenance within LangSmith's scalar metadata value limits.
-
-    The deployed OTLP mapper drops strings of 500 or more characters. Numbered
-    parts preserve long JSON values without truncating source or file details.
-    """
-    fields: dict[str, str | int | bool] = {}
-    for key, value in metadata.items():
-        name = f"compass.input.{key}"
-        encoded = value if isinstance(value, (str, int, bool)) else json.dumps(value)
-        if isinstance(encoded, str) and len(encoded) >= 500:
-            parts = [encoded[index : index + 499] for index in range(0, len(encoded), 499)]
-            fields[f"{name}.parts"] = len(parts)
-            fields.update({f"{name}.{index}": part for index, part in enumerate(parts)})
-        else:
-            fields[name] = encoded
-    return fields
+    """Export named scalar fields without splitting values into arbitrary fragments."""
+    return {
+        f"compass.input.{key}": value
+        for key, value in InputMetadataSummary.model_validate(metadata.model_dump())
+        .model_dump(exclude_none=True)
+        .items()
+        if not isinstance(value, str) or len(value) < 500
+    }
 
 
-def record_input_metadata(
-    config: SourceConfig, loader: TraceLoader, snapshot: TraceSnapshot
-) -> None:
+def record_input_metadata(config: RunConfig, loader: TraceLoader, snapshot: TraceSnapshot) -> None:
     """Attach provenance to the current Compass root after its ingestion span closes."""
     root = trace.get_current_span()
     if root.is_recording():
+        input_source = _input_metadata(config.trace, loader.describe(), snapshot)
+        root_input = RunInput.model_validate({**config.model_dump(), "input_source": input_source})
+        root.set_attribute("input.value", root_input.model_dump_json(exclude={"api_base"}))
+        root.set_attribute("input.mime_type", "application/json")
         root.set_attribute(
             "metadata",
             json.dumps(
                 {
                     **_execution_metadata(),
-                    **_input_metadata_fields(_input_metadata(config, loader.describe(), snapshot)),
+                    **_input_metadata_fields(input_source),
                 }
             ),
         )
 
 
 def _execution_metadata() -> dict[str, str | bool]:
-    metadata: dict[str, str | bool] = {
-        "compass.version": __version__,
-        "nooa.version": nooa.__version__,
-        "python.version": platform.python_version(),
-    }
+    metadata = ExecutionMetadata(
+        compass_version=__version__,
+        nooa_version=nooa.__version__,
+        python_version=platform.python_version(),
+    )
     # Inspect Compass's checkout, not the caller's or analyzed agent's repository.
     checkout = Path(__file__).resolve().parents[2]
     if (checkout / ".git").exists():
@@ -165,10 +261,11 @@ def _execution_metadata() -> dict[str, str | bool]:
         try:
             sha = git(["git", "rev-parse", "HEAD"]).strip()
             dirty = bool(git(["git", "status", "--porcelain", "--untracked-files=normal"]))
-            metadata.update({"compass.git_sha": sha, "compass.git_dirty": dirty})
+            metadata.git_sha = sha
+            metadata.git_dirty = dirty
         except (OSError, subprocess.SubprocessError):
             pass  # Git is optional; installed wheels need only their package version.
-    return metadata
+    return metadata.model_dump(by_alias=True, exclude_none=True)
 
 
 @contextmanager
@@ -198,7 +295,7 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
         with redirect_stdout(sys.stderr):
             enable_tracing(
                 exporters=[
-                    ExceptionEventExporter(
+                    CompassSpanExporter(
                         OTLPSpanExporter(
                             endpoint=f"{endpoint}/otel/v1/traces",
                             headers=headers,
@@ -214,12 +311,16 @@ def telemetry_session(config: RunConfig) -> Iterator[OpenInferenceSpan]:
             )
     try:
         with span("compass") as root:
-            root.set_input(config.model_dump(mode="json", exclude={"api_base"}))
+            root.set_input(
+                RunInput.model_validate(config.model_dump()).model_dump(
+                    mode="json", exclude={"api_base"}
+                )
+            )
             if api_key:
                 # Use OpenInference span metadata for LangSmith compatibility.
                 root.set_attribute("metadata", json.dumps(_execution_metadata()))
                 print(
-                    f"Compass telemetry: execution content and input references to {project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
+                    f"Compass telemetry: execution content and source provenance to {project}; OTLP trace ID {root.get_span_context().trace_id:032x}",
                     file=sys.stderr,
                 )
             yield root

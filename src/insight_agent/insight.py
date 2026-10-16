@@ -20,14 +20,31 @@ Rating = Literal["low", "med", "high"]
 
 
 class SpanEvidence(BaseModel):
-    span_id: str = Field(min_length=1)
-    url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
+    span_id: str = Field(
+        min_length=1,
+        description="ID of a span in the analyzed source trace, not a Compass execution span.",
+    )
+    url: SourceURL | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Source platform or local file link, populated by the loader when available.",
+    )
 
 
 class TraceEvidence(BaseModel):
-    trace_id: str = Field(min_length=1)
-    url: SourceURL | None = Field(default=None, exclude_if=lambda value: value is None)
-    spans: list[SpanEvidence] = Field(default_factory=list, exclude_if=lambda value: not value)
+    trace_id: str = Field(
+        min_length=1, description="ID of an analyzed source trace supporting the insight."
+    )
+    url: SourceURL | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Source platform or local file link, populated by the loader when available.",
+    )
+    spans: list[SpanEvidence] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description="Specific source spans supporting this insight; omitted when only a trace-level reference is available.",
+    )
 
 
 class Insight(BaseModel):
@@ -39,8 +56,11 @@ class Insight(BaseModel):
         exclude_if=lambda value: value is None,
         description="Opaque storage ID of an existing insight. Preserve it exactly; new insights have no ID.",
     )
-    name: str = Field(min_length=1)
-    description: str = Field(min_length=1)
+    name: str = Field(min_length=1, description="Short name of the actionable problem.")
+    description: str = Field(
+        min_length=1,
+        description="Explanation of the observed problem and its impact, grounded in the cited evidence.",
+    )
     evidence: list[TraceEvidence] = Field(
         min_length=2,
         description="Supporting traces with optional relevant spans. URLs are populated by the application.",
@@ -53,7 +73,7 @@ class Insight(BaseModel):
     confidence: Rating | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
-        description="How well the codebase supports this insight's claim; set when code_base is configured.",
+        description="Code support: high means behavior, root cause, scope, and remediation hold up; med means behavior is supported but another part is wrong or unconfirmed; low means the central claim is contradicted. Null means no rating was obtained. Set only when code_base is configured.",
     )
     severity: Rating | None = Field(
         default=None,

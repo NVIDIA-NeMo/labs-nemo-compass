@@ -62,30 +62,42 @@ class _ConfigFileSettingsSource(YamlConfigSettingsSource):
 class FilesystemConfig(ConfigModel):
     """Settings owned by the canonical JSONL filesystem loader."""
 
-    path: Path
+    path: Path = Field(
+        description="Canonical trace JSONL file, resolved relative to the working directory."
+    )
 
 
 class MLflowExperimentConfig(ConfigModel):
     """Settings owned by the live MLflow experiment loader."""
 
-    experiment: str
-    tracking_uri: str | None = None
-    filter: str | None = None
+    experiment: str = Field(description="Name of the MLflow experiment to read.")
+    tracking_uri: str | None = Field(
+        default=None,
+        description="MLflow tracking endpoint; null uses the environment or MLflow default.",
+    )
+    filter: str | None = Field(
+        default=None,
+        description="MLflow trace search filter; null selects without an additional filter.",
+    )
 
 
 class MLflowExportConfig(ConfigModel):
     """Settings owned by the native MLflow export loader."""
 
-    path: Path
+    path: Path = Field(description="Local MLflow trace export file.")
 
 
 class LangfuseTraceExportFileConfig(ConfigModel):
     """Settings for the documented Langfuse v3/v4 export files."""
 
-    api_version: Literal["v3", "v4"]
-    path: Path
-    scores_path: Path | None = None
-    base_url: str | None = None
+    api_version: Literal["v3", "v4"] = Field(description="Langfuse export format version.")
+    path: Path = Field(description="Local Langfuse export file or directory.")
+    scores_path: Path | None = Field(
+        default=None, description="Optional v4 score export file associated with the observations."
+    )
+    base_url: str | None = Field(
+        default=None, description="Optional v4 Langfuse deployment URL for source links."
+    )
 
     @model_validator(mode="after")
     def validate_version_options(self) -> LangfuseTraceExportFileConfig:
@@ -99,13 +111,31 @@ class LangfuseTraceExportFileConfig(ConfigModel):
 class BraintrustConfig(ConfigModel):
     """Settings owned by the live Braintrust SQL trace loader."""
 
-    project_id: str | None = None
-    experiment_id: str | None = None
-    org_name: str | None = None
-    app_url: str | None = None
-    api_url: str | None = None
-    from_timestamp: datetime
-    to_timestamp: datetime
+    project_id: str | None = Field(
+        default=None,
+        description="Project whose production logs are selected; mutually exclusive with experiment_id.",
+    )
+    experiment_id: str | None = Field(
+        default=None,
+        description="Experiment whose traces are selected; mutually exclusive with project_id.",
+    )
+    org_name: str | None = Field(
+        default=None,
+        description="Braintrust organization name; null uses environment configuration.",
+    )
+    app_url: str | None = Field(
+        default=None, description="Braintrust application URL used for source links."
+    )
+    api_url: str | None = Field(
+        default=None,
+        description="Braintrust API endpoint; null uses BRAINTRUST_API_URL, then the default Braintrust endpoint.",
+    )
+    from_timestamp: datetime = Field(
+        description="Start of the trace selection time window, including timezone."
+    )
+    to_timestamp: datetime = Field(
+        description="End of the trace selection time window, including timezone."
+    )
 
     @model_validator(mode="after")
     def selection_is_valid(self) -> BraintrustConfig:
@@ -118,10 +148,20 @@ class BraintrustConfig(ConfigModel):
 class LangfuseConfig(ConfigModel):
     """Settings owned by the live Langfuse v3/v4 trace loader."""
 
-    base_url: str | None = None
-    from_timestamp: datetime
-    to_timestamp: datetime
-    filter: str | None = None
+    base_url: str | None = Field(
+        default=None,
+        description="Langfuse deployment URL; null resolves from environment configuration.",
+    )
+    from_timestamp: datetime = Field(
+        description="Start of the trace selection time window, including timezone."
+    )
+    to_timestamp: datetime = Field(
+        description="End of the trace selection time window, including timezone."
+    )
+    filter: str | None = Field(
+        default=None,
+        description="Langfuse API filter encoded as JSON; null applies no additional filter.",
+    )
 
     @model_validator(mode="after")
     def time_window_is_valid(self) -> LangfuseConfig:
@@ -132,11 +172,20 @@ class LangfuseConfig(ConfigModel):
 class LangSmithTraceSourceConfig(ConfigModel):
     """Settings owned by the LangSmith Trace Loader."""
 
-    project: str
-    api_url: str | None = None
-    filter: str | None = None
-    tree_filter: str | None = None
-    start_time: datetime | None = None
+    project: str = Field(description="LangSmith source project name.")
+    api_url: str | None = Field(
+        default=None, description="LangSmith API endpoint; null uses SDK environment configuration."
+    )
+    filter: str | None = Field(
+        default=None, description="LangSmith filter expression selecting root runs."
+    )
+    tree_filter: str | None = Field(
+        default=None, description="LangSmith filter expression matching runs in the trace tree."
+    )
+    start_time: datetime | None = Field(
+        default=None,
+        description="Earliest root run start time, including timezone; null has no lower bound.",
+    )
 
     @model_validator(mode="after")
     def start_time_has_timezone(self) -> LangSmithTraceSourceConfig:
@@ -150,7 +199,7 @@ class LangSmithTraceSourceConfig(ConfigModel):
 class LangSmithTraceExportFileSourceConfig(ConfigModel):
     """Settings owned by the LangSmith Trace Export File Loader."""
 
-    path: Path
+    path: Path = Field(description="Local LangSmith export file or directory.")
 
 
 class TraceConfig(ConfigModel):
@@ -262,8 +311,14 @@ class CompassSignalsConfig(ConfigModel):
         description="LLM review of failures linked to recorded grader results",
     )
 
-    ethos_divergence: EthosDivergenceConfig | None = Field(default_factory=EthosDivergenceConfig)
-    user_sentiment: UserSentimentConfig | None = Field(default_factory=UserSentimentConfig)
+    ethos_divergence: EthosDivergenceConfig | None = Field(
+        default_factory=EthosDivergenceConfig,
+        description="Analyze deviations from the supplied ethos document; null disables this signal.",
+    )
+    user_sentiment: UserSentimentConfig | None = Field(
+        default_factory=UserSentimentConfig,
+        description="Analyze user sentiment patterns; null disables this signal.",
+    )
 
     @field_validator("*", mode="before")
     @classmethod
@@ -318,7 +373,10 @@ class RunConfig(BaseSettings):
             "Set this when your model supports a smaller output limit."
         ),
     )
-    api_base: str | None = None
+    api_base: str | None = Field(
+        default=None,
+        description="Inference API base URL; null uses provider environment configuration.",
+    )
     existing_insights: Path | None = Field(
         default=None,
         description="Existing insights.json to reconcile with newly generated Insights",

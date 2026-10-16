@@ -51,6 +51,7 @@ class RunResult:
     insights: list[Insight]
     existing_insights: list[Insight] = field(default_factory=list)
     rejected_by_code: int = 0
+    limitations: list[str] = field(default_factory=list)
 
 
 class RunOutput:

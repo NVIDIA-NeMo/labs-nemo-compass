@@ -217,22 +217,21 @@ def _run_cli(source, enabled):
         ids = {r.context.span_id for r in records}
         assert all(r.parent.span_id in ids for r in records if r.parent)
         assert json.loads(str((root.attributes or {})["output.value"]))["insights"] == []
-        from hashlib import sha256
-        from pathlib import Path
+        from insight_agent.telemetry import InputMetadata, RunInput
 
         provenance = {
-            key.removeprefix("compass.input."): json.loads(value)
-            if key.rsplit(".", 1)[-1] in {"selection", "description", "files"}
-            else value
+            key.removeprefix("compass.input."): value
             for key, value in metadata.items()
             if key.startswith("compass.input.")
         }
         assert provenance["source_type"] == "filesystem"
         assert provenance["trace_count"] == 1
-        assert provenance["files"] == [
-            {"path": source, "sha256": sha256(Path(source).read_bytes()).hexdigest()}
-        ]
+        assert provenance["source_path"] == source
         assert provenance["snapshot_saved"] is False
+        inputs = RunInput.model_validate_json(str((root.attributes or {})["input.value"]))
+        assert isinstance(inputs.input_source, InputMetadata)
+        assert inputs.input_source.source_path == source
+        assert inputs.input_source.normalized_sha256 == provenance["normalized_sha256"]
         assert any(r.name == "code_execution" for r in records)
         assert not next(r for r in records if r.name == "failed_tool").status.is_ok
         model = next(

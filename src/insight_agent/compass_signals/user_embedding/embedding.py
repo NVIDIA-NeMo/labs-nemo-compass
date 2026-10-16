@@ -88,7 +88,10 @@ class LiteLLMEmbeddingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = Field(min_length=1, description="LiteLLM model alias for Qwen/Qwen3-Embedding-8B")
-    api_base: str | None = None
+    api_base: str | None = Field(
+        default=None,
+        description="Embedding API base URL; null uses provider environment configuration.",
+    )
     api_key_env: str | None = Field(default=None, description="API key environment variable")
 
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Adapt error attributes to the exception events understood by LangSmith OTLP."""
+"""Present framework operations and errors without changing execution identity."""
 
 import json
 from collections.abc import Sequence
@@ -13,18 +13,21 @@ from opentelemetry.sdk.util import ns_to_iso_str
 from opentelemetry.trace import SpanContext, StatusCode
 
 
-class _ExceptionEventSpan(ReadableSpan):
+class _ExportSpan(ReadableSpan):
     """Read-only export view; the ended SDK span remains untouched.
 
     SDK spans cannot accept events after ending. Delegate the public snapshot
     fields instead of constructing a new SDK snapshot or mutating its internals.
     """
 
-    def __init__(self, original: ReadableSpan, event: Event) -> None:
+    def __init__(
+        self, original: ReadableSpan, event: Event | None = None, name: str | None = None
+    ) -> None:
         self._original = original
-        self._export_events = (*original.events, event)
+        self._export_name = name or original.name
+        self._export_events = (*original.events, event) if event else original.events
 
-    name = property(attrgetter("_original.name"))
+    name = property(attrgetter("_export_name"))
     context = property(attrgetter("_original.context"))
     parent = property(attrgetter("_original.parent"))
     resource = property(attrgetter("_original.resource"))
@@ -43,14 +46,15 @@ class _ExceptionEventSpan(ReadableSpan):
 
     def to_json(self, indent: int | None = 4) -> str:
         document = json.loads(self._original.to_json(indent=indent))
-        event = self._export_events[-1]
-        document["events"].append(
+        document["name"] = self.name
+        document["events"] = [
             {
                 "name": event.name,
                 "timestamp": ns_to_iso_str(event.timestamp),
                 "attributes": dict(event.attributes or {}),
             }
-        )
+            for event in self._export_events
+        ]
         return json.dumps(document, indent=indent)
 
     def get_span_context(self) -> SpanContext | None:
@@ -76,17 +80,35 @@ def _with_exception_event(span: ReadableSpan) -> ReadableSpan:
             exception["exception.message"] = message
     if not exception:
         return span
-    return _ExceptionEventSpan(span, Event("exception", exception, timestamp=span.end_time))
+    return _ExportSpan(span, Event("exception", exception, timestamp=span.end_time))
 
 
-class ExceptionEventExporter(SpanExporter):
+def _with_operation_name(span: ReadableSpan) -> ReadableSpan:
+    """Name the API layer, rather than suggesting nested SDK calls are extra requests."""
+    scope = span.instrumentation_scope.name if span.instrumentation_scope else ""
+    names = {
+        "nooa.tracing": {"generation": "agent.execute", "context_snapshot": "agent.context"},
+        "openinference.instrumentation.litellm": {
+            "acompletion": "llm.chat_completion",
+            "completion": "llm.chat_completion",
+            "aresponses": "llm.responses",
+            "responses": "llm.responses",
+        },
+    }
+    name = names.get(scope, {}).get(span.name)
+    return _ExportSpan(span, name=name) if name else span
+
+
+class CompassSpanExporter(SpanExporter):
     """Forward spans with explicit error events without changing execution identity."""
 
     def __init__(self, delegate: SpanExporter) -> None:
         self._delegate = delegate
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        return self._delegate.export(tuple(_with_exception_event(span) for span in spans))
+        return self._delegate.export(
+            tuple(_with_operation_name(_with_exception_event(span)) for span in spans)
+        )
 
     def shutdown(self) -> None:
         self._delegate.shutdown()

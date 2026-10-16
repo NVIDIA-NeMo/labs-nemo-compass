@@ -25,7 +25,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from trace_ingest.loaders.trace_loaders import TraceDescription
 from trace_ingest.models import (
@@ -56,8 +56,11 @@ class GymTraceConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    path: Path
-    format: Literal["jsonl", "json"] = "jsonl"
+    path: Path = Field(description="Local Gym rollout file containing ng_trajectory.")
+    format: Literal["jsonl", "json"] = Field(
+        default="jsonl",
+        description="JSONL reads one rollout per nonblank line; JSON reads a single rollout object.",
+    )
 
 
 class GymTraceDescription(TraceDescription):

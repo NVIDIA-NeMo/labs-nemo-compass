@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from nooa.unifiedllm import UnifiedLLM
-from pydantic import BaseModel, ConfigDict, FilePath
+from pydantic import BaseModel, ConfigDict, Field, FilePath
 
 from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
 from insight_agent.compass_signals.issue_detector import IssueDetector
@@ -48,7 +48,10 @@ async def detect_ethos_divergence(
 class EthosDivergenceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    ethos_path: FilePath | None = None
+    ethos_path: FilePath | None = Field(
+        default=None,
+        description="Local document defining expected agent behavior; null skips this signal.",
+    )
 
 
 class EthosDivergenceCompassSignal:

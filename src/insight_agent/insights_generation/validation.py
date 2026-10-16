@@ -7,13 +7,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nooa import Agent, strategy
+from nooa import Agent, no_trace, strategy
 from nooa.agentdoc import truncating_pformat
 from nooa.config import CodeActConfig
 from nooa.errors import GenerationAborted, GenerationError
 from nooa.strategies import CodeActStrategy
 from nooa.unifiedllm import UnifiedLLM
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.insights_generation.codebase import CodebaseTools
@@ -37,7 +37,12 @@ def _trace_context(supporting_traces: tuple[Trace, ...]) -> str:
 class _SupportDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    supported: bool | None
+    supported: bool | None = Field(
+        description=(
+            "True when inspected code supports the problem; false when it contradicts it; "
+            "null when code inspection cannot determine support. Unresolved problems are retained."
+        )
+    )
 
 
 class _ValidationAgent(Agent):
@@ -45,6 +50,7 @@ class _ValidationAgent(Agent):
         super().__init__(llm=llm)
         self.codebase = codebase
 
+    @no_trace  # The Compass validation.problem span owns this operation.
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=_MAX_ITERATIONS)))
     async def decide(self, problem: Problem, supporting_traces: str) -> _SupportDecision:  # ty: ignore[empty-body] -- Nooa implements the ellipsis method.
         """Validate exactly one potential problem from an AI agent's runtime traces.

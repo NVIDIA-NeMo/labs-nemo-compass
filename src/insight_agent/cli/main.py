@@ -31,6 +31,7 @@ from nooa.unifiedllm import CompletionClient, UnifiedLLM
 from pydantic_settings import CliSettingsSource
 from rich.console import Console
 
+from insight_agent import telemetry_models as tm
 from insight_agent.cli.output import RunOutput, RunResult, display_name
 from insight_agent.compass_signals.builtins import registered_builtin_signals
 from insight_agent.compass_signals.compass_signals import CompassSignalResult, Problem
@@ -257,9 +258,11 @@ async def _run_compass_signals(
             changed()
 
         try:
-            with span(f"evidence.{name}") as record:
+            signal_key = name.replace("-", "_")
+            with span(f"signal.{signal_key}") as record:
+                record.set_input(tm.SignalInput(trace_count=len(snapshot)))
                 result = await registry.analyze(name, snapshot, on_start=started)
-                record.set_output(result)
+                record.set_output(tm.SignalOutput.from_result(result))
                 return result
         finally:
             if name in active:
@@ -277,8 +280,9 @@ async def _validate_evidence_with_code(
     snapshot: TraceSnapshot,
     code_base_path: Path,
     llm: UnifiedLLM,
+    summary: tm.ValidationOutput | None = None,
 ) -> list[CompassSignalResult]:
-    """Keep only Problems that the supplied codebase supports."""
+    """Reject unsupported problems; retain supported and unresolved candidates."""
 
     code_base_path = code_base_path.expanduser().resolve()
     if not code_base_path.is_dir():
@@ -288,10 +292,12 @@ async def _validate_evidence_with_code(
     async def validate_problem(
         problem: Problem, supporting_traces: tuple[Trace, ...]
     ) -> bool | None:
-        with span("validate_problem") as record:
-            record.set_input({"problem": problem, "code_base": str(code_base_path)})
+        with span("validation.problem") as record:
+            record.set_input(
+                tm.ProblemValidationInput(problem=problem, code_base=str(code_base_path))
+            )
             decision = await validator.is_supported(problem, supporting_traces)
-            record.set_output({"supported": decision})
+            record.set_output(tm.ProblemValidationOutput(supported=decision))
             return decision
 
     async def validate_result(result: CompassSignalResult) -> CompassSignalResult:
@@ -302,7 +308,13 @@ async def _validate_evidence_with_code(
             )
             validations.append(validate_problem(problem, supporting_traces))
 
-        decisions = await asyncio.gather(*validations)
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(validation) for validation in validations]
+        decisions = [task.result() for task in tasks]
+        if summary is not None:
+            summary.supported += sum(decision is True for decision in decisions)
+            summary.unsupported += sum(decision is False for decision in decisions)
+            summary.unresolved += sum(decision is None for decision in decisions)
         retained_problems = tuple(
             problem
             for problem, decision in zip(result.problems, decisions, strict=True)
@@ -310,7 +322,9 @@ async def _validate_evidence_with_code(
         )
         return result.model_copy(update={"problems": retained_problems})
 
-    return list(await asyncio.gather(*(validate_result(result) for result in evidence)))
+    async with asyncio.TaskGroup() as group:
+        tasks = [group.create_task(validate_result(result)) for result in evidence]
+    return [task.result() for task in tasks]
 
 
 async def _rate_confidence_with_code(
@@ -338,10 +352,23 @@ async def _rate_confidence_with_code(
             for trace in (supporting_trace(item.trace_id) for item in insight.evidence)
             if trace is not None
         )
-        rating = await rater.rate(insight, supporting_traces)
-        return insight.model_copy(update={"confidence": rating})
+        with span("confidence.insight") as record:
+            record.set_input(
+                tm.InsightConfidenceInput(
+                    insight_name=insight.name,
+                    description=insight.description,
+                    code_base=str(code_base_path),
+                )
+            )
+            rating = await rater.rate(insight, supporting_traces)
+            record.set_output(
+                tm.InsightConfidenceResult(insight_name=insight.name, confidence=rating)
+            )
+            return insight.model_copy(update={"confidence": rating})
 
-    return list(await asyncio.gather(*(rate_insight(insight) for insight in insights)))
+    async with asyncio.TaskGroup() as group:
+        tasks = [group.create_task(rate_insight(insight)) for insight in insights]
+    return [task.result() for task in tasks]
 
 
 def _build_llm(config: RunConfig, api_key: str) -> CompletionClient:
@@ -374,8 +401,8 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             record.set_input(config.trace)
             loader = _configured_trace_loader(config.trace)
             snapshot = await asyncio.to_thread(loader.load)
-            record.set_output({"trace_count": len(snapshot)})
-        record_input_metadata(config.trace, loader, snapshot)
+            record.set_output(tm.IngestionOutput(trace_count=len(snapshot)))
+        record_input_metadata(config, loader, snapshot)
         output.trace_count = len(snapshot)
         output.activity = "Checking prerequisites"
 
@@ -398,6 +425,11 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             evidence=evidence,
             insights=list(existing),
             existing_insights=existing,
+            limitations=[
+                f"{item.signal_name.replace('-', '_')}: {reason}"
+                for item in evidence
+                for reason in ((item.skip_reason,) if item.skip_reason else ()) + item.limitations
+            ],
         )
         if any(item.problems for item in evidence):
             run_timestamp = datetime.now(timezone.utc)
@@ -409,13 +441,24 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
             output.activity = "Investigating insight confidence against the codebase"
             with span("confidence") as record:
                 record.set_input(
-                    {"insight_count": len(result.insights), "code_base": str(config.code_base)}
+                    tm.ConfidenceInput(
+                        insight_count=len(result.insights), code_base=str(config.code_base)
+                    )
                 )
                 async with _build_llm(config, api_key) as llm:
                     result.insights = await _rate_confidence_with_code(
                         result.insights, snapshot, config.code_base, llm
                     )
-                record.set_output({"insights": result.insights})
+                record.set_output(
+                    tm.ConfidenceOutput(
+                        ratings=[
+                            tm.InsightConfidenceResult(
+                                insight_name=item.name, confidence=item.confidence
+                            )
+                            for item in result.insights
+                        ]
+                    )
+                )
         return result
 
 
@@ -434,32 +477,47 @@ async def _compile_evidence(
             with span("validation") as record:
                 candidate_count = sum(len(item.problems) for item in evidence)
                 record.set_input(
-                    {"problem_count": candidate_count, "code_base": str(config.code_base)}
+                    tm.ValidationInput(
+                        problem_count=candidate_count, code_base=str(config.code_base)
+                    )
                 )
+                validation = tm.ValidationOutput()
                 evidence = await _validate_evidence_with_code(
-                    evidence, snapshot, config.code_base, llm
+                    evidence, snapshot, config.code_base, llm, summary=validation
                 )
                 result.rejected_by_code = candidate_count - sum(
                     len(item.problems) for item in evidence
                 )
-                record.set_output(
-                    {
-                        "retained": candidate_count - result.rejected_by_code,
-                        "rejected": result.rejected_by_code,
-                    }
-                )
+                record.set_output(validation)
+                if validation.unresolved:
+                    result.limitations.append(
+                        f"Code validation could not determine support for {validation.unresolved} candidate problem(s); these were retained for compilation."
+                    )
         if not any(item.problems for item in evidence):
             return result.existing_insights
         output.activity = "Reviewing candidate issues for actionable insights"
         with span("compilation") as record:
-            record.set_input({"evidence": evidence, "existing_insights": result.existing_insights})
+            record.set_input(
+                tm.CompilationInput(
+                    signals=[
+                        tm.SignalCandidates(
+                            signal=item.signal_name.replace("-", "_"),
+                            problems=item.problems,
+                            limitations=item.limitations,
+                        )
+                        for item in evidence
+                    ],
+                    existing_insights=result.existing_insights,
+                )
+            )
             insights = await InsightCompilation(llm=llm).compile_insights(
                 evidence,
                 snapshot,
                 result.existing_insights,
                 run_timestamp,
+                limitations=result.limitations,
             )
-            record.set_output({"insights": insights})
+            record.set_output(tm.InsightsOutput(insights=insights))
             return insights
 
 
@@ -529,11 +587,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(rendered, end="")
             output.report(result, config.output_path)
             record.set_output(
-                {
-                    "trace_count": result.trace_count,
-                    "insights": result.insights,
-                    "rejected_by_code": result.rejected_by_code,
-                },
+                tm.RunOutput(
+                    trace_count=result.trace_count,
+                    insights=result.insights,
+                    rejected_by_code=result.rejected_by_code,
+                    limitations=result.limitations,
+                ),
             )
         return EXIT_OK
     except SetupError as error:

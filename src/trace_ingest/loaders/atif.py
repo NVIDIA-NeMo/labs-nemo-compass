@@ -41,7 +41,7 @@ class ATIFTraceConfig(BaseModel):
     """Settings for an ATIF JSONL file."""
 
     model_config = ConfigDict(extra="forbid")
-    path: Path
+    path: Path = Field(description="Local ATIF trajectory JSONL file.")
 
 
 class ATIFTraceDescription(TraceDescription):

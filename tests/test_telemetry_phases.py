@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+from builtins import ExceptionGroup
 from functools import partial
 from io import StringIO
 from types import SimpleNamespace
@@ -69,25 +70,24 @@ def test_signal_spans_distinguish_executed_skipped_and_disabled(monkeypatch, cap
     spans = {span.name: span for span in captured_spans.get_finished_spans()}
     assert set(spans) == {
         "compass",
-        "evidence.anomaly-and-patterns",
-        "evidence.user-sentiment",
+        "signal.anomaly_and_patterns",
+        "signal.user_sentiment",
         "analysis-operation",
     }
-    for name in ("evidence.anomaly-and-patterns", "evidence.user-sentiment"):
+    for name in ("signal.anomaly_and_patterns", "signal.user_sentiment"):
         assert spans[name].parent.span_id == root.get_span_context().span_id
     assert (
         spans["analysis-operation"].parent.span_id
-        == spans["evidence.anomaly-and-patterns"].context.span_id
+        == spans["signal.anomaly_and_patterns"].context.span_id
     )
-    assert _output(spans["evidence.anomaly-and-patterns"])["finding_count"] == 2
+    assert _output(spans["signal.anomaly_and_patterns"])["status"] == "completed"
     assert (
-        _output(spans["evidence.user-sentiment"])["skip_reason"]
-        == "No embedding backend configured"
+        _output(spans["signal.user_sentiment"])["skip_reason"] == "No embedding backend configured"
     )
     assert [item.signal_name for item in results] == ["anomaly-and-patterns", "user-sentiment"]
 
 
-@pytest.mark.parametrize("retain_problem", [True, False])
+@pytest.mark.parametrize("retain_problem", [True, False, None])
 def test_pipeline_groups_validation_and_confidence_by_actual_work(
     monkeypatch, tmp_path, captured_spans, retain_problem
 ):
@@ -108,7 +108,7 @@ def test_pipeline_groups_validation_and_confidence_by_actual_work(
         with cli.span("validation-operation"):
             return retain_problem
 
-    async def compile_insights(evidence, loaded, existing, timestamp):
+    async def compile_insights(evidence, loaded, existing, timestamp, *, limitations):
         assert loaded is snapshot and evidence[0].problems == (problem,)
         with cli.span("compilation-operation"):
             return [insight]
@@ -152,17 +152,24 @@ def test_pipeline_groups_validation_and_confidence_by_actual_work(
     spans = {span.name: span for span in captured_spans.get_finished_spans()}
     assert _output(spans["ingestion"]) == {"trace_count": 2}
     assert _output(spans["validation"]) == {
-        "retained": int(retain_problem),
-        "rejected": int(not retain_problem),
+        "supported": int(retain_problem is True),
+        "unsupported": int(retain_problem is False),
+        "unresolved": int(retain_problem is None),
     }
-    assert spans["validate_problem"].parent.span_id == spans["validation"].context.span_id
-    assert spans["validation-operation"].parent.span_id == spans["validate_problem"].context.span_id
-    assert _output(spans["validate_problem"]) == {"supported": retain_problem}
-    assert result.rejected_by_code == int(not retain_problem)
-    if retain_problem:
+    assert spans["validation.problem"].parent.span_id == spans["validation"].context.span_id
+    assert (
+        spans["validation-operation"].parent.span_id == spans["validation.problem"].context.span_id
+    )
+    assert _output(spans["validation.problem"]) == {"supported": retain_problem}
+    assert result.rejected_by_code == int(retain_problem is False)
+    assert bool(result.limitations) is (retain_problem is None)
+    if retain_problem is not False:
         assert spans["compilation-operation"].parent.span_id == spans["compilation"].context.span_id
-        assert spans["confidence-operation"].parent.span_id == spans["confidence"].context.span_id
-        assert _output(spans["confidence"])["insights"][0]["confidence"] == "high"
+        assert (
+            spans["confidence-operation"].parent.span_id
+            == spans["confidence.insight"].context.span_id
+        )
+        assert _output(spans["confidence"])["ratings"][0]["confidence"] == "high"
         assert result.insights[0].confidence == "high"
     else:
         assert "compilation" not in spans and "confidence" not in spans
@@ -171,3 +178,64 @@ def test_pipeline_groups_validation_and_confidence_by_actual_work(
         if name in spans:
             assert spans[name].parent.span_id == spans["compass"].context.span_id
     assert len({span.context.trace_id for span in spans.values()}) == 1
+
+
+@pytest.mark.parametrize("phase", ["validation", "confidence"])
+def test_failed_phase_waits_for_sibling_cancellation(monkeypatch, tmp_path, captured_spans, phase):
+    completed = []
+
+    async def exercise():
+        sibling_started = asyncio.Event()
+
+        async def work(candidate, supporting):
+            identity = candidate.description
+            with cli.span(f"work.{identity}"):
+                if identity == "fails":
+                    await sibling_started.wait()
+                    raise RuntimeError("failed child")
+                sibling_started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    await asyncio.sleep(0)
+                    completed.append(identity)
+
+        monkeypatch.setattr(
+            cli, "ProblemValidation", lambda *args: SimpleNamespace(is_supported=work)
+        )
+        monkeypatch.setattr(cli, "InsightConfidence", lambda *args: SimpleNamespace(rate=work))
+        with cli.span(phase):
+            if phase == "validation":
+                evidence = [
+                    CompassSignalResult(
+                        signal_name=name,
+                        problems=(Problem(description=name, supporting_trace_ids=("a", "b")),),
+                    )
+                    for name in ("fails", "cancelled")
+                ]
+                await cli._validate_evidence_with_code(
+                    evidence, _snapshot(), tmp_path, FakeLLMClient([])
+                )
+            else:
+                insights = [
+                    Insight(
+                        name=name,
+                        description=name,
+                        evidence=[TraceEvidence(trace_id="a"), TraceEvidence(trace_id="b")],
+                    )
+                    for name in ("fails", "cancelled")
+                ]
+                await cli._rate_confidence_with_code(
+                    insights, _snapshot(), tmp_path, FakeLLMClient([])
+                )
+
+    with pytest.raises(ExceptionGroup):
+        asyncio.run(exercise())
+    assert completed == ["cancelled"]
+    spans = captured_spans.get_finished_spans()
+    root = next(span for span in spans if span.name == phase)
+    by_id = {span.context.span_id: span for span in spans}
+    for child in spans:
+        if child.parent:
+            assert child.end_time <= by_id[child.parent.span_id].end_time
+    assert not root.status.is_ok

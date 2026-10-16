@@ -650,9 +650,20 @@ class ToolIssueEvidenceArtifacts:
 class ToolIssueConfig(BaseModel):
     """Typed configuration owned by tool-issue analysis."""
 
-    minimum_independent_cases: int = Field(default=CARD_MINIMUM_CASES, ge=1)
-    retry_threshold: int = Field(default=RETRY_THRESHOLD, ge=1)
-    include_audit_problems: bool = False
+    minimum_independent_cases: int = Field(
+        default=CARD_MINIMUM_CASES,
+        ge=1,
+        description="Minimum independent cases required for a recurring tool issue.",
+    )
+    retry_threshold: int = Field(
+        default=RETRY_THRESHOLD,
+        ge=1,
+        description="Retry count threshold used to identify retry-related tool issues.",
+    )
+    include_audit_problems: bool = Field(
+        default=False,
+        description="Include audit-only cards as candidate problems, in addition to insight-eligible cards.",
+    )
 
 
 def problems_from_cards(

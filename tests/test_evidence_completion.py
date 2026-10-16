@@ -295,7 +295,9 @@ def test_evidence_scan_records_outcome_without_failing_run(completion_case, monk
     )
     with operation_span("compass"):
         with pytest.warns(UserWarning) if outcome != "complete" else nullcontext():
-            result = completion.apply(snapshot, RUN_TIMESTAMP)
+            limitations = []
+            result = completion.apply(snapshot, RUN_TIMESTAMP, limitations=limitations)
+    assert bool(limitations) is (outcome != "complete")
     scan, root = exporter.get_finished_spans()
     assert scan.name == "evidence_scan"
     assert scan.parent is not None
