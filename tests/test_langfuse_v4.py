@@ -845,3 +845,30 @@ def test_v4_supplied_missing_score_file_is_an_error(tmp_path):
     instance.config.scores_path.unlink()
     with pytest.raises(LangfuseTraceLoadError, match="scores.json"):
         instance.load()
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+def test_telemetry_preserves_export_completeness(tmp_path, limit):
+    from insight_agent.telemetry import _input_metadata, _input_metadata_fields
+
+    paths = write_exports(
+        tmp_path,
+        [observation("old", trace_id="old"), observation("new", trace_id="new", start=END)],
+        [exported_score("unrelated", {"kind": "trace", "id": "absent"})],
+    )
+    config = TraceConfig(
+        max_traces=limit,
+        langfuse_trace_export_file={"api_version": "v4", "path": paths[0], "scores_path": paths[1]},
+    )
+    instance = _configured_trace_loader(config)
+    snapshot = instance.load()
+    metadata = _input_metadata(config, instance.describe(), snapshot)
+    assert metadata.trace_count == limit
+    assert metadata.export_trace_count == 2
+    assert metadata.max_traces == limit
+    assert metadata.truncated is (limit < 2)
+    assert metadata.ignored_score_count == 1
+    assert metadata.api_version == "v4"
+    fields = _input_metadata_fields(metadata)
+    assert fields["compass.input.truncated"] is (limit < 2)
+    assert fields["compass.input.ignored_score_count"] == 1
