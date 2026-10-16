@@ -3,16 +3,21 @@
 
 from types import SimpleNamespace
 
+import pytest
 from nooa.runtime.harness_metrics import HarnessMetrics
 from nooa.tracing._hooks_impl import OpenInferenceHooks
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from insight_agent.telemetry_framework import (
     FRAMEWORK_FIELD_MODELS,
+    LANGSMITH_MODEL_OUTPUT,
     SPAN_CONTRACTS,
+    LangSmithParsedOutput,
+    LangSmithTextOutput,
+    LangSmithUsageMetadata,
     MethodInput,
     PythonInput,
     PythonOutput,
@@ -22,7 +27,16 @@ from insight_agent.telemetry_framework import (
 
 
 def test_framework_contracts_have_field_meanings():
-    for model in (*FRAMEWORK_FIELD_MODELS, MethodInput, PythonInput, PythonOutput, TimingFields):
+    for model in (
+        *FRAMEWORK_FIELD_MODELS,
+        MethodInput,
+        PythonInput,
+        PythonOutput,
+        TimingFields,
+        LangSmithUsageMetadata,
+        LangSmithTextOutput,
+        LangSmithParsedOutput,
+    ):
         assert all(field.description for field in model.model_fields.values())
         assert model.model_json_schema()
     for contract in SPAN_CONTRACTS.values():
@@ -30,6 +44,28 @@ def test_framework_contracts_have_field_meanings():
         for payload in (contract.input, contract.output):
             if payload is not None:
                 assert payload.json_schema()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"text": '[{"role":"assistant","contents":[]}]'},
+        {"value": "reviewed source trace", "details": {"matches": [1, 2], "resolved": True}},
+    ],
+)
+def test_langsmith_output_projection_preserves_response_and_types_usage(payload):
+    usage = {"input_tokens": 10, "output_tokens": 3, "total_tokens": 13}
+    remote = {**payload, "usage_metadata": usage}
+    parsed = LANGSMITH_MODEL_OUTPUT.validate_python(remote, strict=True)
+    assert parsed is not None
+    assert parsed.model_dump() == remote
+    assert parsed.usage_metadata is not None
+    assert parsed.usage_metadata.total_tokens == 13
+    with pytest.raises(ValidationError):
+        LANGSMITH_MODEL_OUTPUT.validate_python(
+            {**payload, "usage_metadata": {**usage, "total_tokens": "13"}}, strict=True
+        )
+    assert LANGSMITH_MODEL_OUTPUT.validate_python(None) is None
 
 
 def test_real_nooa_code_execution_fields_match_contract():

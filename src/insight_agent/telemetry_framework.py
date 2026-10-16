@@ -385,6 +385,56 @@ class LangSmithFields(FrameworkFields):
     )
 
 
+class LangSmithUsageMetadata(FrameworkFields):
+    """Token usage LangSmith adds to model outputs after OTLP ingestion."""
+
+    input_tokens: int = Field(
+        ge=0,
+        description="Provider-reported input tokens for this model span, including cached input when reported.",
+    )
+    output_tokens: int = Field(
+        ge=0,
+        description="Provider-reported output tokens for this model span, including reasoning when reported.",
+    )
+    total_tokens: int = Field(
+        ge=0,
+        description="Total tokens for this model span; adapter and nested provider spans can describe the same request and must not be added together.",
+    )
+
+
+class LangSmithTextOutput(FrameworkFields):
+    """LangSmith's text wrapper, distinct from the original OTLP output contract."""
+
+    text: str = Field(
+        description="Original output text, including serialized message arrays when LangSmith wraps them instead of parsing them."
+    )
+    usage_metadata: LangSmithUsageMetadata | None = Field(
+        default=None,
+        description="Token accounting added by LangSmith, not part of the model's answer.",
+    )
+
+
+class LangSmithParsedOutput(BaseModel):
+    """Parsed model JSON with LangSmith-added token accounting.
+
+    Other keys belong to the original model response and retain their JSON types.
+    Their application-specific meaning comes from that response's schema; Compass
+    does not invent a fixed schema for generated answers such as ``value``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
+    usage_metadata: LangSmithUsageMetadata | None = Field(
+        default=None,
+        description="Token accounting added by LangSmith alongside the parsed response fields.",
+    )
+
+
+# These describe the platform-visible projection, not the OTLP payloads below.
+# Empty model content can appear as null outputs even when usage is on the run.
+LANGSMITH_MODEL_OUTPUT = TypeAdapter(LangSmithTextOutput | LangSmithParsedOutput | None)
+
+
 class MethodInput(FrameworkFields):
     args: list[JsonValue] | str = Field(
         description="Positional method arguments; unsupported Python objects become diagnostic strings and oversized lists may become a bounded repr string."
