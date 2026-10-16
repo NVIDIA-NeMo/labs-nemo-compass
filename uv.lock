@@ -685,7 +685,7 @@ wheels = [
 ]
 
 [[package]]
-name = "insight-agent"
+name = "compass"
 version = "0.1.0rc1"
 source = { editable = "." }
 dependencies = [
