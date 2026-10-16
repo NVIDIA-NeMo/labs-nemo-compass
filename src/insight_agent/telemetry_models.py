@@ -1,11 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Canonical contracts for Compass-owned span inputs and outputs.
-
-Field descriptions define the exported JSON keys. These contracts describe work
-performed by Compass; source records are not synthetic execution spans.
-"""
+"""Typed inputs and outputs for Compass-owned spans."""
 
 from typing import Generic, Literal, TypeVar
 
@@ -27,14 +23,14 @@ class TelemetryModel(BaseModel):
 
 
 class IngestionOutput(TelemetryModel):
-    trace_count: int = Field(ge=0, description="Number of input traces loaded for this run.")
+    trace_count: int = Field(ge=0)
 
 
 SignalConfig = TypeVar("SignalConfig", bound=BaseModel)
 
 
 class SignalInput(TelemetryModel, Generic[SignalConfig]):
-    trace_count: int = Field(ge=0, description="Number of input traces available to this signal.")
+    trace_count: int = Field(ge=0)
     config: SignalConfig = Field(
         description="Effective settings for this signal, including defaults."
     )
@@ -57,18 +53,12 @@ SIGNAL_INPUT_TYPES = {
 
 
 class SignalOutput(TelemetryModel):
-    status: Literal["completed", "skipped"] = Field(
-        description="Whether this signal analyzed the inputs or skipped due to unavailable prerequisites."
-    )
+    status: Literal["completed", "skipped"]
     problems: tuple[Problem, ...] = Field(
         description="Candidate issues found by this signal, before code validation and insight compilation."
     )
-    skip_reason: str | None = Field(
-        default=None, description="Why prerequisites prevented analysis; null when analysis ran."
-    )
-    limitations: tuple[str, ...] = Field(
-        description="Known gaps in the input or analysis that limit interpretation of these candidates."
-    )
+    skip_reason: str | None = None
+    limitations: tuple[str, ...]
 
     @classmethod
     def from_result(cls, result: CompassSignalResult) -> "SignalOutput":
@@ -82,16 +72,12 @@ class SignalOutput(TelemetryModel):
 
 class ProblemSummary(TelemetryModel):
     signal: str = Field(description="Configuration key of the signal that reported this problem.")
-    description: str = Field(
-        description="Original candidate problem description, without source trace contents."
-    )
+    description: str
 
 
 class SourceCodeValidationInput(TelemetryModel):
-    problems: list[ProblemSummary] = Field(
-        description="Candidate problems to check against the codebase, with their originating signals."
-    )
-    code_base: str = Field(description="Local codebase directory inspected during validation.")
+    problems: list[ProblemSummary]
+    code_base: str
 
 
 class SourceCodeValidationOutput(TelemetryModel):
@@ -110,10 +96,8 @@ class SourceCodeValidationOutput(TelemetryModel):
 
 
 class ProblemValidationInput(TelemetryModel):
-    problem: Problem = Field(
-        description="Candidate problem being checked, with its source trace references."
-    )
-    code_base: str = Field(description="Local codebase directory inspected for this candidate.")
+    problem: Problem
+    code_base: str
 
 
 class ProblemValidationOutput(TelemetryModel):
@@ -123,52 +107,42 @@ class ProblemValidationOutput(TelemetryModel):
 
 
 class SignalCandidates(TelemetryModel):
-    signal: str = Field(description="Signal configuration key that produced these candidates.")
+    signal: str
     problems: tuple[Problem, ...] = Field(
         description="Candidate problems available to compilation after any code validation."
     )
-    limitations: tuple[str, ...] = Field(description="Known limitations of this signal's analysis.")
+    limitations: tuple[str, ...]
 
 
 class CompilationInput(TelemetryModel):
-    signals: list[SignalCandidates] = Field(
-        description="Candidates grouped by originating signal, without diagnostic artifacts."
-    )
-    existing_insights: list[Insight] = Field(
-        description="Previously saved insights that the compiler can preserve or extend."
-    )
+    signals: list[SignalCandidates]
+    existing_insights: list[Insight]
 
 
 class InsightsOutput(TelemetryModel):
-    insights: list[Insight] = Field(description="Actionable insights produced by this phase.")
+    insights: list[Insight]
 
 
 class ConfidenceInput(TelemetryModel):
-    insight_count: int = Field(
-        ge=0, description="Number of compiled insights being checked against the codebase."
-    )
-    code_base: str = Field(description="Local codebase directory inspected when rating confidence.")
+    insight_count: int = Field(ge=0)
+    code_base: str
 
 
 class InsightConfidenceInput(TelemetryModel):
-    insight_name: str = Field(description="Name of the insight being checked against code.")
-    description: str = Field(description="Claim whose support in the codebase is being assessed.")
-    code_base: str = Field(
-        description="Local codebase directory used for the confidence assessment."
-    )
+    insight_name: str
+    description: str
+    code_base: str
 
 
 class InsightConfidenceResult(TelemetryModel):
-    insight_name: str = Field(description="Name of the compiled insight being rated.")
+    insight_name: str
     confidence: Rating | None = Field(
         description="Code support: high means behavior, root cause, scope, and remediation hold up; med means behavior is supported but another part is wrong or unconfirmed; low means the central claim is contradicted. Null means no rating was obtained."
     )
 
 
 class ConfidenceOutput(TelemetryModel):
-    ratings: list[InsightConfidenceResult] = Field(
-        description="Code-based confidence assigned to each final insight."
-    )
+    ratings: list[InsightConfidenceResult]
 
 
 class RunOutput(TelemetryModel):
@@ -176,36 +150,22 @@ class RunOutput(TelemetryModel):
         default_factory=list,
         description="Known limits of this run: skipped signals, missing input capabilities, unresolved code checks, and incomplete evidence scans.",
     )
-    trace_count: int = Field(ge=0, description="Number of source traces loaded for this run.")
-    insights: list[Insight] = Field(
-        description="Final insights written to the configured output destination."
-    )
-    rejected_by_code: int = Field(
-        ge=0,
-        description="Number of candidate problems excluded because code validation returned unsupported.",
-    )
+    trace_count: int = Field(ge=0)
+    insights: list[Insight]
+    rejected_by_code: int = Field(ge=0)
 
 
 class EvidenceScanInput(TelemetryModel):
-    insight_name: str = Field(
-        description="Insight whose evidence predicate is evaluated over the input corpus."
-    )
-    trace_count: int = Field(
-        ge=0, description="Number of source traces available to the evidence scan."
-    )
+    insight_name: str
+    trace_count: int = Field(ge=0)
 
 
 class EvidenceScanResult(TelemetryModel):
     status: Literal["complete", "incomplete"] = Field(
         description="Complete means every trace received a match/no-match decision; incomplete means some decisions were unknown."
     )
-    match_count: int = Field(
-        ge=0, description="Number of source traces matching the insight's evidence predicate."
-    )
-    unknown_count: int = Field(
-        ge=0,
-        description="Number of source traces for which the predicate could not determine a match.",
-    )
+    match_count: int = Field(ge=0)
+    unknown_count: int = Field(ge=0)
 
 
 class EvidenceScanFailure(TelemetryModel):
@@ -215,6 +175,4 @@ class EvidenceScanFailure(TelemetryModel):
     reason: str = Field(
         description="Explanation for skipping, or the exception message for failure (up to 300 characters)."
     )
-    error_type: str | None = Field(
-        description="Exception class for a failed scan; null for an explicitly skipped scan."
-    )
+    error_type: str | None

@@ -1157,21 +1157,13 @@ class AnomalyAndPatternsConfig(BaseModel):
         default=CONTAMINATION,
         description="Expected fraction of outliers used by anomaly detection.",
     )
-    input_scaling: Literal["none", "robust"] = Field(
-        default="none", description="Feature scaling before clustering and anomaly detection."
-    )
+    input_scaling: Literal["none", "robust"] = "none"
     cluster_candidates: tuple[int, ...] = Field(
         default=(2, 3, 4, 5, 6, 7, 8),
-        description="Candidate cluster counts evaluated during model selection.",
+        description="Numbers of trajectory clusters to try; select the count with the best silhouette score.",
     )
-    minimum_independent_traces: int = Field(
-        default=RECURRENCE_THRESHOLD,
-        ge=1,
-        description="Minimum independent traces required for a recurring problem.",
-    )
-    feature_names: tuple[str, ...] | None = Field(
-        default=None, description="Feature names to analyze; null selects the standard feature set."
-    )
+    minimum_independent_traces: int = Field(default=RECURRENCE_THRESHOLD, ge=1)
+    feature_names: tuple[str, ...] | None = None
 
     @field_validator("contamination")
     @classmethod

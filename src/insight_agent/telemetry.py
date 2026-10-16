@@ -72,10 +72,8 @@ class InputMetadata(BaseModel):
         "langsmith_trace_export_file",
         "braintrust",
         "intake",
-    ] = Field(description="Configured loader that produced the normalized input corpus.")
-    trace_count: int = Field(
-        ge=0, description="Number of normalized input traces loaded for this run."
-    )
+    ]
+    trace_count: int = Field(ge=0)
     normalized_sha256: str = Field(
         pattern=r"^[0-9a-f]{64}$",
         description="SHA-256 of each normalized trace's UTF-8 model_dump_json() plus newline, in snapshot order; identifies content, not a retrievable archive.",
@@ -107,28 +105,15 @@ class InputMetadata(BaseModel):
         default=None,
         description="Resolved source API endpoint or MLflow tracking URI, including environment-derived values; not the telemetry destination.",
     )
-    project_id: str | None = Field(
-        default=None,
-        description="Resolved source platform project identifier, when supplied by the loader.",
-    )
-    experiment_id: str | None = Field(
-        default=None,
-        description="Resolved MLflow or Braintrust experiment identifier, when applicable.",
-    )
-    workspace: str | None = Field(
-        default=None, description="Intake workspace containing the input traces."
-    )
+    project_id: str | None = None
+    experiment_id: str | None = None
+    workspace: str | None = None
     source_path: str | None = Field(
         default=None,
         description="Absolute path of the local input file or export directory; requires access to the originating filesystem.",
     )
-    scores_path: str | None = Field(
-        default=None, description="Absolute path of the auxiliary Langfuse scores file, if used."
-    )
-    api_version: str | None = Field(
-        default=None,
-        description="Langfuse API/export version actually selected by the loader, if known.",
-    )
+    scores_path: str | None = None
+    api_version: str | None = None
 
 
 class RunInput(RunConfig):
@@ -154,20 +139,10 @@ class ExecutionMetadata(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
-    compass_version: str = Field(
-        alias="compass.version", description="Installed Compass package version."
-    )
-    nooa_version: str = Field(
-        alias="nooa.version", description="Installed Nooa agent framework version."
-    )
-    python_version: str = Field(
-        alias="python.version", description="Python interpreter version running Compass."
-    )
-    git_sha: str | None = Field(
-        default=None,
-        alias="compass.git_sha",
-        description="Compass checkout HEAD commit, when running from a Git checkout.",
-    )
+    compass_version: str = Field(alias="compass.version")
+    nooa_version: str = Field(alias="nooa.version")
+    python_version: str = Field(alias="python.version")
+    git_sha: str | None = Field(default=None, alias="compass.git_sha")
     git_dirty: bool | None = Field(
         default=None,
         alias="compass.git_dirty",

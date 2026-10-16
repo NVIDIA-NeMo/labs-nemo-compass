@@ -50,11 +50,7 @@ class _GraderFailureAgent(Protocol):
 class GraderFailurePatternsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_tool_rounds: int = Field(
-        default=DEFAULT_MAX_TOOL_ROUNDS,
-        ge=1,
-        description="Maximum trace-fetch tool rounds allowed during grader failure analysis.",
-    )
+    max_tool_rounds: int = Field(default=DEFAULT_MAX_TOOL_ROUNDS, ge=1)
 
 
 def _build_agent(

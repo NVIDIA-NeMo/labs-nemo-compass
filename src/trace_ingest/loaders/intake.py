@@ -169,31 +169,18 @@ class _SpanPage(_WireModel):
 class IntakeTraceQuery(_StrictModel):
     """A mandatory time-bounded root-trace selection."""
 
-    started_at_gte: datetime = Field(description="Inclusive earliest trace start time.")
-    started_at_lte: datetime = Field(description="Inclusive latest trace start time.")
-    agent_name: str | None = Field(
-        default=None, description="Restrict to this agent name; null includes all agents."
-    )
+    started_at_gte: datetime
+    started_at_lte: datetime
+    agent_name: str | None = None
     experiment_id: str | None = Field(
         default=None, min_length=1, description="Restrict traces to evaluations in this experiment."
     )
-    evaluation_name: str | None = Field(
-        default=None, description="Restrict to this evaluation name."
-    )
-    test_case_name: str | None = Field(default=None, description="Restrict to this test case name.")
-    session_id: str | None = Field(default=None, description="Restrict to this session ID.")
-    status: IntakeStatus | None = Field(
-        default=None, description="Restrict to this trace execution status."
-    )
-    max_traces: int | None = Field(
-        default=None,
-        ge=1,
-        description="Maximum number of complete traces to load; null is unlimited.",
-    )
-    sort: Literal["started_at", "-started_at"] = Field(
-        default="started_at",
-        description="Trace start-time order; a leading minus requests descending order.",
-    )
+    evaluation_name: str | None = None
+    test_case_name: str | None = None
+    session_id: str | None = None
+    status: IntakeStatus | None = None
+    max_traces: int | None = Field(default=None, ge=1)
+    sort: Literal["started_at", "-started_at"] = "started_at"
 
     @field_validator("started_at_gte", "started_at_lte")
     @classmethod
@@ -228,18 +215,11 @@ class IntakeTraceQuery(_StrictModel):
 class IntakeTraceLoaderConfig(_StrictModel):
     """Validated configuration for one bounded Intake snapshot."""
 
-    base_url: str = Field(min_length=1, description="NeMo Intake API base URL.")
-    workspace: str = Field(min_length=1, description="Workspace containing the source traces.")
-    query: IntakeTraceQuery = Field(description="Bounded selection of root traces to load.")
-    page_size: int = Field(
-        default=100, ge=1, le=1000, description="Maximum records requested per API page."
-    )
-    timeout_seconds: float = Field(
-        default=30.0,
-        gt=0,
-        allow_inf_nan=False,
-        description="Timeout in seconds for each Intake HTTP request.",
-    )
+    base_url: str = Field(min_length=1)
+    workspace: str = Field(min_length=1)
+    query: IntakeTraceQuery
+    page_size: int = Field(default=100, ge=1, le=1000)
+    timeout_seconds: float = Field(default=30.0, gt=0, allow_inf_nan=False)
 
     @field_validator("base_url")
     @classmethod

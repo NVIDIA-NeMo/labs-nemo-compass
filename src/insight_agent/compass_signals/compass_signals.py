@@ -15,10 +15,7 @@ from insight_agent.traces import TraceSnapshot
 class Problem(BaseModel):
     """A potential issue surfaced by one Compass Signal."""
 
-    description: str = Field(
-        min_length=1,
-        description="Potential behavioral issue observed by this signal; not yet validated against code.",
-    )
+    description: str = Field(min_length=1)
     supporting_trace_ids: tuple[str, ...] = Field(
         min_length=1,
         description="Source trace IDs cited by the signal as examples supporting this candidate problem.",

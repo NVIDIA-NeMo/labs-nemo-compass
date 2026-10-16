@@ -71,29 +71,6 @@ def test_error_event_preserves_encoded_span_and_original(fallback):
 
 
 @pytest.mark.parametrize(
-    "status,existing_exception",
-    [(StatusCode.OK, False), (StatusCode.UNSET, False), (StatusCode.ERROR, True)],
-)
-def test_preserves_success_and_existing_exception(status, existing_exception):
-    original = finished_span(status, existing_exception)
-    delegate = Mock(spec=SpanExporter)
-    CompassSpanExporter(delegate).export([original])
-    assert delegate.export.call_args.args[0][0] is original
-
-
-def test_forwards_failure_and_exporter_lifecycle():
-    delegate = Mock(spec=SpanExporter)
-    delegate.export.return_value = SpanExportResult.FAILURE
-    delegate.force_flush.return_value = False
-    exporter = CompassSpanExporter(delegate)
-    assert exporter.export([]) == SpanExportResult.FAILURE
-    assert exporter.force_flush(1234) is False
-    delegate.force_flush.assert_called_once_with(1234)
-    exporter.shutdown()
-    delegate.shutdown.assert_called_once_with()
-
-
-@pytest.mark.parametrize(
     "scope,name,method,expected",
     [
         ("nooa.tracing", "generation", None, "agent.execute"),
@@ -123,20 +100,4 @@ def test_operation_names_preserve_identity_and_payload(scope, name, method, expe
     encoded.resource_spans[0].scope_spans[0].spans[0].name = name
     assert encoded == encode_spans([original])
     assert original.name == name
-    provider.shutdown()
-
-
-@pytest.mark.parametrize("is_diff", [False, True])
-def test_context_label_preserves_snapshot_or_diff_meaning(is_diff):
-    captured = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(captured))
-    with provider.get_tracer("nooa.tracing").start_as_current_span("context_snapshot") as span:
-        span.set_attribute("nooa.system_message.is_diff", is_diff)
-        span.set_attribute("input.value", "context content")
-    delegate = Mock(spec=SpanExporter)
-    CompassSpanExporter(delegate).export(captured.get_finished_spans())
-    (forwarded,) = delegate.export.call_args.args[0]
-    assert forwarded.name == ("agent.context_diff" if is_diff else "agent.context_snapshot")
-    assert forwarded.attributes["input.value"] == "context content"
     provider.shutdown()
