@@ -295,7 +295,7 @@ async def _validate_evidence_with_code(
     snapshot: TraceSnapshot,
     code_base_path: Path,
     llm: UnifiedLLM,
-    summary: tm.ValidationOutput | None = None,
+    summary: tm.SourceCodeValidationOutput | None = None,
 ) -> list[CompassSignalResult]:
     """Reject unsupported problems; retain supported and unresolved candidates."""
 
@@ -307,7 +307,7 @@ async def _validate_evidence_with_code(
     async def validate_problem(
         problem: Problem, supporting_traces: tuple[Trace, ...]
     ) -> bool | None:
-        with span("validation.problem") as record:
+        with span("source_code_validation.problem") as record:
             record.set_input(
                 tm.ProblemValidationInput(problem=problem, code_base=str(code_base_path))
             )
@@ -327,9 +327,20 @@ async def _validate_evidence_with_code(
             tasks = [group.create_task(validation) for validation in validations]
         decisions = [task.result() for task in tasks]
         if summary is not None:
-            summary.supported += sum(decision is True for decision in decisions)
-            summary.unsupported += sum(decision is False for decision in decisions)
-            summary.unresolved += sum(decision is None for decision in decisions)
+            for problem, decision in zip(result.problems, decisions, strict=True):
+                destination = (
+                    summary.supported
+                    if decision is True
+                    else summary.unsupported
+                    if decision is False
+                    else summary.unresolved
+                )
+                destination.append(
+                    tm.ProblemSummary(
+                        signal=result.signal_name.replace("-", "_"),
+                        description=problem.description,
+                    )
+                )
         retained_problems = tuple(
             problem
             for problem, decision in zip(result.problems, decisions, strict=True)
@@ -489,14 +500,22 @@ async def _compile_evidence(
     async with _build_llm(config, api_key) as llm:
         if config.code_base is not None:
             output.activity = "Checking candidate issues against the codebase"
-            with span("validation") as record:
+            with span("source_code_validation") as record:
                 candidate_count = sum(len(item.problems) for item in evidence)
                 record.set_input(
-                    tm.ValidationInput(
-                        problem_count=candidate_count, code_base=str(config.code_base)
+                    tm.SourceCodeValidationInput(
+                        problems=[
+                            tm.ProblemSummary(
+                                signal=item.signal_name.replace("-", "_"),
+                                description=problem.description,
+                            )
+                            for item in evidence
+                            for problem in item.problems
+                        ],
+                        code_base=str(config.code_base),
                     )
                 )
-                validation = tm.ValidationOutput()
+                validation = tm.SourceCodeValidationOutput()
                 evidence = await _validate_evidence_with_code(
                     evidence, snapshot, config.code_base, llm, summary=validation
                 )
@@ -506,7 +525,7 @@ async def _compile_evidence(
                 record.set_output(validation)
                 if validation.unresolved:
                     result.limitations.append(
-                        f"Code validation could not determine support for {validation.unresolved} candidate problem(s); these were retained for compilation."
+                        f"Code validation could not determine support for {len(validation.unresolved)} candidate problem(s); these were retained for compilation."
                     )
         if not any(item.problems for item in evidence):
             return result.existing_insights

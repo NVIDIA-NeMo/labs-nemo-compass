@@ -149,16 +149,25 @@ def test_pipeline_groups_validation_and_confidence_by_actual_work(
 
     spans = {span.name: span for span in captured_spans.get_finished_spans()}
     assert _output(spans["ingestion"]) == {"trace_count": 2}
-    assert _output(spans["validation"]) == {
-        "supported": int(retain_problem is True),
-        "unsupported": int(retain_problem is False),
-        "unresolved": int(retain_problem is None),
+    problem_summary = {"signal": "anomaly_and_patterns", "description": "Candidate"}
+    assert json.loads(spans["source_code_validation"].attributes["input.value"]) == {
+        "problems": [problem_summary],
+        "code_base": str(tmp_path),
     }
-    assert spans["validation.problem"].parent.span_id == spans["validation"].context.span_id
+    assert _output(spans["source_code_validation"]) == {
+        "supported": [problem_summary] if retain_problem is True else [],
+        "unsupported": [problem_summary] if retain_problem is False else [],
+        "unresolved": [problem_summary] if retain_problem is None else [],
+    }
     assert (
-        spans["validation-operation"].parent.span_id == spans["validation.problem"].context.span_id
+        spans["source_code_validation.problem"].parent.span_id
+        == spans["source_code_validation"].context.span_id
     )
-    assert _output(spans["validation.problem"]) == {"supported": retain_problem}
+    assert (
+        spans["validation-operation"].parent.span_id
+        == spans["source_code_validation.problem"].context.span_id
+    )
+    assert _output(spans["source_code_validation.problem"]) == {"supported": retain_problem}
     assert result.rejected_by_code == int(retain_problem is False)
     assert bool(result.limitations) is (retain_problem is None)
     if retain_problem is not False:
@@ -172,13 +181,13 @@ def test_pipeline_groups_validation_and_confidence_by_actual_work(
     else:
         assert "compilation" not in spans and "confidence" not in spans
         assert result.insights == []
-    for name in ("ingestion", "validation", "compilation", "confidence"):
+    for name in ("ingestion", "source_code_validation", "compilation", "confidence"):
         if name in spans:
             assert spans[name].parent.span_id == spans["compass"].context.span_id
     assert len({span.context.trace_id for span in spans.values()}) == 1
 
 
-@pytest.mark.parametrize("phase", ["validation", "confidence"])
+@pytest.mark.parametrize("phase", ["source_code_validation", "confidence"])
 def test_failed_phase_waits_for_sibling_cancellation(monkeypatch, tmp_path, captured_spans, phase):
     completed = []
 
@@ -203,7 +212,7 @@ def test_failed_phase_waits_for_sibling_cancellation(monkeypatch, tmp_path, capt
         )
         monkeypatch.setattr(cli, "InsightConfidence", lambda *args: SimpleNamespace(rate=work))
         with cli.span(phase):
-            if phase == "validation":
+            if phase == "source_code_validation":
                 evidence = [
                     CompassSignalResult(
                         signal_name=name,

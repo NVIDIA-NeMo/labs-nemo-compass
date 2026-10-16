@@ -80,28 +80,32 @@ class SignalOutput(TelemetryModel):
         )
 
 
-class ValidationInput(TelemetryModel):
-    problem_count: int = Field(
-        ge=0, description="Number of candidate problems checked against the codebase."
+class ProblemSummary(TelemetryModel):
+    signal: str = Field(description="Configuration key of the signal that reported this problem.")
+    description: str = Field(
+        description="Original candidate problem description, without source trace contents."
+    )
+
+
+class SourceCodeValidationInput(TelemetryModel):
+    problems: list[ProblemSummary] = Field(
+        description="Candidate problems to check against the codebase, with their originating signals."
     )
     code_base: str = Field(description="Local codebase directory inspected during validation.")
 
 
-class ValidationOutput(TelemetryModel):
-    supported: int = Field(
-        default=0,
-        ge=0,
-        description="Candidates supported by the codebase and retained for compilation.",
+class SourceCodeValidationOutput(TelemetryModel):
+    supported: list[ProblemSummary] = Field(
+        default_factory=list,
+        description="Problems supported by inspected code and retained for compilation.",
     )
-    unsupported: int = Field(
-        default=0,
-        ge=0,
-        description="Candidates contradicted by the codebase and excluded from compilation.",
+    unsupported: list[ProblemSummary] = Field(
+        default_factory=list,
+        description="Problems contradicted by inspected code and excluded from compilation.",
     )
-    unresolved: int = Field(
-        default=0,
-        ge=0,
-        description="Candidates whose support could not be determined; retained for compilation.",
+    unresolved: list[ProblemSummary] = Field(
+        default_factory=list,
+        description="Problems whose support could not be determined; retained for compilation.",
     )
 
 

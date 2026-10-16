@@ -542,10 +542,12 @@ SPAN_CONTRACTS = {
         f"signal.{name}": _contract("One configured Compass signal.", model, phase.SignalOutput)
         for name, model in phase.SIGNAL_INPUT_TYPES.items()
     },
-    "validation": _contract(
-        "Check candidates against code.", phase.ValidationInput, phase.ValidationOutput
+    "source_code_validation": _contract(
+        "Check candidates against code.",
+        phase.SourceCodeValidationInput,
+        phase.SourceCodeValidationOutput,
     ),
-    "validation.problem": _contract(
+    "source_code_validation.problem": _contract(
         "Check one candidate against code.",
         phase.ProblemValidationInput,
         phase.ProblemValidationOutput,

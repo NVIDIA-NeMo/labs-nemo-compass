@@ -50,7 +50,7 @@ class _ValidationAgent(Agent):
         super().__init__(llm=llm)
         self.codebase = codebase
 
-    @no_trace  # The Compass validation.problem span owns this operation.
+    @no_trace  # The Compass source_code_validation.problem span owns this operation.
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=_MAX_ITERATIONS)))
     async def decide(self, problem: Problem, supporting_traces: str) -> _SupportDecision:  # ty: ignore[empty-body] -- Nooa implements the ellipsis method.
         """Validate exactly one potential problem from an AI agent's runtime traces.
