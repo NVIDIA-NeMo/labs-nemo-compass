@@ -15,9 +15,9 @@ CHECK_RELEASE = Path(__file__).resolve().parents[1] / "tools/check_release.py"
 @pytest.mark.parametrize(
     ("name", "version", "code", "expected"),
     [
-        ("nemo-compass", "0.1.0rc1", 0, "tag=v0.1.0rc1\nprerelease=true\n"),
-        ("nemo-compass", "0.1.0", 0, "tag=v0.1.0\nprerelease=false\n"),
-        ("nemo-compass", "invalid", 2, "Invalid version"),
+        ("compass", "0.1.0rc1", 0, "tag=v0.1.0rc1\nprerelease=true\n"),
+        ("compass", "0.1.0", 0, "tag=v0.1.0\nprerelease=false\n"),
+        ("compass", "invalid", 2, "Invalid version"),
         ("insight-agent", "0.1.0", 2, "Rename the distribution"),
     ],
 )

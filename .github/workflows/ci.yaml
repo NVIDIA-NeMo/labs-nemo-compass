@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_call:
     inputs:
       release-ref:
@@ -95,10 +96,10 @@ jobs:
           trap 'rm -rf "$smoke_env"' EXIT
           uv venv "$smoke_env"
           uv pip install --no-config --no-sources --python "$smoke_env/bin/python" \
-            dist/nemo_compass-*.whl
+            dist/compass-*.whl
           cd "$smoke_env"
-          "$smoke_env/bin/python" -I -c 'from insight_agent.traces import Trace; from trace_ingest import Trace as SharedTrace; assert Trace is SharedTrace'
-          "$smoke_env/bin/insight-agent" --help
+          "$smoke_env/bin/python" -I -c 'from compass.traces import Trace; from trace_ingest import Trace as SharedTrace; assert Trace is SharedTrace'
+          "$smoke_env/bin/compass" --help
 
       - name: Validate release identity and checksum artifacts
         id: release
