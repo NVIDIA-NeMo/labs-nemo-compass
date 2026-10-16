@@ -1153,15 +1153,9 @@ def to_anomaly_and_patterns_trace(trace: Trace) -> NormalizedTrace:
 class AnomalyAndPatternsConfig(BaseModel):
     """Typed configuration owned by anomaly-and-pattern analysis."""
 
-    contamination: float = Field(
-        default=CONTAMINATION,
-        description="Expected fraction of outliers used by anomaly detection.",
-    )
+    contamination: float = CONTAMINATION
     input_scaling: Literal["none", "robust"] = "none"
-    cluster_candidates: tuple[int, ...] = Field(
-        default=(2, 3, 4, 5, 6, 7, 8),
-        description="Numbers of trajectory clusters to try; select the count with the best silhouette score.",
-    )
+    cluster_candidates: tuple[int, ...] = (2, 3, 4, 5, 6, 7, 8)
     minimum_independent_traces: int = Field(default=RECURRENCE_THRESHOLD, ge=1)
     feature_names: tuple[str, ...] | None = None
 

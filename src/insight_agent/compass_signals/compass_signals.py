@@ -16,10 +16,7 @@ class Problem(BaseModel):
     """A potential issue surfaced by one Compass Signal."""
 
     description: str = Field(min_length=1)
-    supporting_trace_ids: tuple[str, ...] = Field(
-        min_length=1,
-        description="Source trace IDs cited by the signal as examples supporting this candidate problem.",
-    )
+    supporting_trace_ids: tuple[str, ...] = Field(min_length=1)
     candidate_trace_ids: tuple[str, ...] = Field(
         default=(),
         description=(

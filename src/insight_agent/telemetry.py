@@ -74,44 +74,17 @@ class InputMetadata(BaseModel):
         "intake",
     ]
     trace_count: int = Field(ge=0)
-    normalized_sha256: str = Field(
-        pattern=r"^[0-9a-f]{64}$",
-        description="SHA-256 of each normalized trace's UTF-8 model_dump_json() plus newline, in snapshot order; identifies content, not a retrievable archive.",
-    )
-    snapshot_saved: Literal[False] = Field(
-        default=False,
-        description="False because Compass does not save or upload a copy of its input corpus.",
-    )
-    max_traces: int | None = Field(
-        default=None,
-        ge=1,
-        description="Effective loader limit on source traces, including a loader default; null means no limit was reported, not that the source was exhausted.",
-    )
-    truncated: bool | None = Field(
-        default=None,
-        description="Whether the loader omitted traces from a local export because of its limit; null means completeness was not reported.",
-    )
-    export_trace_count: int | None = Field(
-        default=None,
-        ge=0,
-        description="Number of traces in the supplied local export before the loader applied its limit; does not establish completeness of the original platform export.",
-    )
-    ignored_score_count: int | None = Field(
-        default=None,
-        ge=0,
-        description="Number of Langfuse score records that could not be associated with a trace in the supplied export.",
-    )
-    endpoint: str | None = Field(
-        default=None,
-        description="Resolved source API endpoint or MLflow tracking URI, including environment-derived values; not the telemetry destination.",
-    )
+    normalized_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_saved: Literal[False] = False
+    max_traces: int | None = Field(default=None, ge=1)
+    truncated: bool | None = None
+    export_trace_count: int | None = Field(default=None, ge=0)
+    ignored_score_count: int | None = Field(default=None, ge=0)
+    endpoint: str | None = None
     project_id: str | None = None
     experiment_id: str | None = None
     workspace: str | None = None
-    source_path: str | None = Field(
-        default=None,
-        description="Absolute path of the local input file or export directory; requires access to the originating filesystem.",
-    )
+    source_path: str | None = None
     scores_path: str | None = None
     api_version: str | None = None
 
@@ -119,19 +92,13 @@ class InputMetadata(BaseModel):
 class RunInput(RunConfig):
     """Compass run configuration and complete resolved input provenance."""
 
-    input_source: InputMetadata | None = Field(
-        default=None,
-        description="Resolved source coordinates and normalized corpus identity after loading; null before ingestion completes. Source query and filters are in trace configuration.",
-    )
+    input_source: InputMetadata | None = None
 
 
 class InputMetadataSummary(InputMetadata):
     """Searchable scalar projection; complete coordinates remain in the root input."""
 
-    details_location: Literal["inputs.input_source"] = Field(
-        default="inputs.input_source",
-        description="Location of the complete typed source details; metadata omits coordinates of 500 or more characters because LangSmith drops them.",
-    )
+    details_location: Literal["inputs.input_source"] = "inputs.input_source"
 
 
 class ExecutionMetadata(BaseModel):
@@ -143,11 +110,7 @@ class ExecutionMetadata(BaseModel):
     nooa_version: str = Field(alias="nooa.version")
     python_version: str = Field(alias="python.version")
     git_sha: str | None = Field(default=None, alias="compass.git_sha")
-    git_dirty: bool | None = Field(
-        default=None,
-        alias="compass.git_dirty",
-        description="Whether the Compass checkout has staged, unstaged, or non-ignored untracked changes at capture time.",
-    )
+    git_dirty: bool | None = Field(default=None, alias="compass.git_dirty")
 
 
 def _input_metadata(

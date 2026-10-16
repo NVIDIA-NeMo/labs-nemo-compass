@@ -31,16 +31,11 @@ SignalConfig = TypeVar("SignalConfig", bound=BaseModel)
 
 class SignalInput(TelemetryModel, Generic[SignalConfig]):
     trace_count: int = Field(ge=0)
-    config: SignalConfig = Field(
-        description="Effective settings for this signal, including defaults."
-    )
+    config: SignalConfig
 
 
 class EthosSignalInput(SignalInput[EthosDivergenceConfig]):
-    ethos: str | None = Field(
-        default=None,
-        description="Exact ethos text supplied to this analysis; null when analysis has not started or was skipped.",
-    )
+    ethos: str | None = None
 
 
 SIGNAL_INPUT_TYPES = {
@@ -54,9 +49,7 @@ SIGNAL_INPUT_TYPES = {
 
 class SignalOutput(TelemetryModel):
     status: Literal["completed", "skipped"]
-    problems: tuple[Problem, ...] = Field(
-        description="Candidate issues found by this signal, before code validation and insight compilation."
-    )
+    problems: tuple[Problem, ...]
     skip_reason: str | None = None
     limitations: tuple[str, ...]
 
@@ -71,7 +64,7 @@ class SignalOutput(TelemetryModel):
 
 
 class ProblemSummary(TelemetryModel):
-    signal: str = Field(description="Configuration key of the signal that reported this problem.")
+    signal: str
     description: str
 
 
@@ -81,18 +74,9 @@ class SourceCodeValidationInput(TelemetryModel):
 
 
 class SourceCodeValidationOutput(TelemetryModel):
-    supported: list[ProblemSummary] = Field(
-        default_factory=list,
-        description="Problems supported by inspected code and retained for compilation.",
-    )
-    unsupported: list[ProblemSummary] = Field(
-        default_factory=list,
-        description="Problems contradicted by inspected code and excluded from compilation.",
-    )
-    unresolved: list[ProblemSummary] = Field(
-        default_factory=list,
-        description="Problems whose support could not be determined; retained for compilation.",
-    )
+    supported: list[ProblemSummary] = Field(default_factory=list)
+    unsupported: list[ProblemSummary] = Field(default_factory=list)
+    unresolved: list[ProblemSummary] = Field(default_factory=list)
 
 
 class ProblemValidationInput(TelemetryModel):
@@ -101,16 +85,12 @@ class ProblemValidationInput(TelemetryModel):
 
 
 class ProblemValidationOutput(TelemetryModel):
-    supported: bool | None = Field(
-        description="True means code supports the candidate; false means code contradicts it; null means unresolved and retained."
-    )
+    supported: bool | None
 
 
 class SignalCandidates(TelemetryModel):
     signal: str
-    problems: tuple[Problem, ...] = Field(
-        description="Candidate problems available to compilation after any code validation."
-    )
+    problems: tuple[Problem, ...]
     limitations: tuple[str, ...]
 
 
@@ -136,9 +116,7 @@ class InsightConfidenceInput(TelemetryModel):
 
 class InsightConfidenceResult(TelemetryModel):
     insight_name: str
-    confidence: Rating | None = Field(
-        description="Code support: high means behavior, root cause, scope, and remediation hold up; med means behavior is supported but another part is wrong or unconfirmed; low means the central claim is contradicted. Null means no rating was obtained."
-    )
+    confidence: Rating | None
 
 
 class ConfidenceOutput(TelemetryModel):
@@ -146,10 +124,7 @@ class ConfidenceOutput(TelemetryModel):
 
 
 class RunOutput(TelemetryModel):
-    limitations: list[str] = Field(
-        default_factory=list,
-        description="Known limits of this run: skipped signals, missing input capabilities, unresolved code checks, and incomplete evidence scans.",
-    )
+    limitations: list[str] = Field(default_factory=list)
     trace_count: int = Field(ge=0)
     insights: list[Insight]
     rejected_by_code: int = Field(ge=0)
@@ -161,18 +136,12 @@ class EvidenceScanInput(TelemetryModel):
 
 
 class EvidenceScanResult(TelemetryModel):
-    status: Literal["complete", "incomplete"] = Field(
-        description="Complete means every trace received a match/no-match decision; incomplete means some decisions were unknown."
-    )
+    status: Literal["complete", "incomplete"]
     match_count: int = Field(ge=0)
     unknown_count: int = Field(ge=0)
 
 
 class EvidenceScanFailure(TelemetryModel):
-    status: Literal["skipped", "failed"] = Field(
-        description="Skipped means no predicate was supplied with an explanation; failed means the predicate or its checks raised an error. Existing evidence is retained."
-    )
-    reason: str = Field(
-        description="Explanation for skipping, or the exception message for failure (up to 300 characters)."
-    )
+    status: Literal["skipped", "failed"]
+    reason: str
     error_type: str | None

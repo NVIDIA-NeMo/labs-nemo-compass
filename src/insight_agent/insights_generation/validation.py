@@ -13,7 +13,7 @@ from nooa.config import CodeActConfig
 from nooa.errors import GenerationAborted, GenerationError
 from nooa.strategies import CodeActStrategy
 from nooa.unifiedllm import UnifiedLLM
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from insight_agent.compass_signals.compass_signals import Problem
 from insight_agent.insights_generation.codebase import CodebaseTools
@@ -37,12 +37,7 @@ def _trace_context(supporting_traces: tuple[Trace, ...]) -> str:
 class _SupportDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    supported: bool | None = Field(
-        description=(
-            "True when inspected code supports the problem; false when it contradicts it; "
-            "null when code inspection cannot determine support. Unresolved problems are retained."
-        )
-    )
+    supported: bool | None
 
 
 class _ValidationAgent(Agent):

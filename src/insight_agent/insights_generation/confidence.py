@@ -13,7 +13,7 @@ from nooa.config import CodeActConfig
 from nooa.errors import GenerationAborted, GenerationError
 from nooa.strategies import CodeActStrategy
 from nooa.unifiedllm import UnifiedLLM
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from insight_agent.insight import Insight, Rating
 from insight_agent.insights_generation.codebase import CodebaseTools
@@ -37,13 +37,7 @@ def _trace_context(supporting_traces: tuple[Trace, ...]) -> str:
 class _Confidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    confidence: Rating = Field(
-        description=(
-            "Code support for the insight: high when behavior, root cause, scope, and remediation "
-            "hold up; med when behavior reproduces but another part is unconfirmed or wrong; "
-            "low when code or supporting traces contradict the central claim."
-        )
-    )
+    confidence: Rating
 
 
 class _ConfidenceAgent(Agent):
