@@ -43,7 +43,8 @@ The ethos-divergence signal compares observed behavior with a document describin
 business purpose, requirements, and limits. This document, called `ETHOS.md`, defines expected
 behavior independently of the implementation. For example, a support agent might be allowed to
 explain refund policy but forbidden to issue refunds. The signal would investigate a recorded refund
-action as a possible violation, even if the tool call succeeded.
+action as a possible violation, even if the tool call succeeded. ETHOS.md can be generated with the 
+help of the [Ethos skills](https://github.com/NVIDIA/skills/blob/main/skills/ethos-orchestrate/README.md#how-to-use). 
 
 The signal supplies the document and trace snapshot to an LLM issue detector. Its instructions
 require reviewing the visible conversation and identifying which requirement was violated and how.
