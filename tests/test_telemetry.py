@@ -103,7 +103,6 @@ def test_cli_telemetry_in_fresh_process(tmp_path, api_key, project):
             id="input",
             root_spans=[],
             aggregate=TraceAggregate(),
-            attributes={"items": list(range(30)), "text": "x" * 5000},
         ).model_dump_json()
         + "\n"
     )
@@ -232,6 +231,8 @@ def _run_cli(source, enabled):
         assert isinstance(inputs.input_source, InputMetadata)
         assert inputs.input_source.source_path == source
         assert inputs.input_source.normalized_sha256 == provenance["normalized_sha256"]
+        ingestion = next(r for r in records if r.name == "ingestion")
+        assert json.loads(str((ingestion.attributes or {})["output.value"])) == {"trace_count": 1}
         assert any(r.name == "code_execution" for r in records)
         assert not next(r for r in records if r.name == "failed_tool").status.is_ok
         model = next(
