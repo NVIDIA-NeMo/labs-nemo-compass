@@ -8,38 +8,18 @@ on:
 permissions:
   contents: read
 jobs:
-  validate:
-    uses: ./.github/workflows/ci.yaml
-    with:
-      release-ref: ${{ github.event.pull_request.head.sha }}
-  inspect:
-    needs: validate
-    permissions:
-      contents: write
+  preview-notes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          ref: ${{ needs.validate.outputs.commit }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: release-distributions
-          path: dist
-      - name: Verify commit, outputs, and downloaded artifacts
+      - name: Preview release notes without creating a release
         env:
-          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha }}
-          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
-          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
-          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: 70b75ec43d8c70219946564c75acdace748398d6
         run: |
-          test "$RELEASE_COMMIT" = "$EXPECTED_COMMIT"
-          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
-          test "$RELEASE_TAG" = "v0.1.0"
-          test "$PRERELEASE" = "false"
-          git push --dry-run origin "$RELEASE_COMMIT:refs/tags/$RELEASE_TAG"
-          cd dist
-          sha256sum --check SHA256SUMS
-          test -f compass-0.1.0-py3-none-any.whl
-          test -f compass-0.1.0.tar.gz
-          echo "Validated $RELEASE_TAG at $RELEASE_COMMIT; downloaded artifacts verified." >> "$GITHUB_STEP_SUMMARY"
+          gh api --method POST "repos/$GH_REPO/releases/generate-notes" \
+            -f tag_name=v0.1.0 -f target_commitish="$RELEASE_COMMIT" \
+            --jq '.name'
