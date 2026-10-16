@@ -553,6 +553,14 @@ SPAN_CONTRACTS = {
     ),
 }
 
+SPAN_CONTRACTS["agent.context_snapshot"] = _contract(
+    "Complete rendered system context for the agent, not an incremental update.", ContextText
+)
+SPAN_CONTRACTS["agent.context_diff"] = _contract(
+    "Unified diff against the preceding rendered system context in the same agent call.",
+    ContextText,
+)
+
 HARNESS_METRICS_MODEL = HarnessMetrics
 
 FRAMEWORK_FIELD_MODELS = (

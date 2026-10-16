@@ -96,6 +96,10 @@ def _with_operation_name(span: ReadableSpan) -> ReadableSpan:
         },
     }
     name = names.get(scope, {}).get(span.name)
+    if scope == "nooa.tracing" and span.name == "context_snapshot":
+        is_diff = (span.attributes or {}).get("nooa.system_message.is_diff")
+        if isinstance(is_diff, bool):
+            name = "agent.context_diff" if is_diff else "agent.context_snapshot"
     return _ExportSpan(span, name=name) if name else span
 
 
