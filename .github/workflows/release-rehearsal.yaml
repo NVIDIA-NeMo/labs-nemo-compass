@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release rehearsal
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yaml
+    with:
+      release-ref: ${{ github.event.pull_request.head.sha }}
+  inspect:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-distributions
+          path: dist
+      - name: Verify commit, outputs, and downloaded artifacts
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha }}
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          test "$RELEASE_COMMIT" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$RELEASE_TAG" = "v0.1.0"
+          test "$PRERELEASE" = "false"
+          cd dist
+          sha256sum --check SHA256SUMS
+          test -f compass-0.1.0-py3-none-any.whl
+          test -f compass-0.1.0.tar.gz
+          echo "Validated $RELEASE_TAG at $RELEASE_COMMIT; downloaded artifacts verified." >> "$GITHUB_STEP_SUMMARY"
