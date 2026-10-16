@@ -373,10 +373,6 @@ async def _generate_insights(config: RunConfig, output: RunOutput) -> RunResult:
         with span("ingestion") as record:
             record.set_input(config.trace)
             snapshot = await asyncio.to_thread(_configured_trace_loader(config.trace).load)
-            if record.is_recording():
-                for index, trace in enumerate(snapshot):
-                    with span("input_trace") as input_record:
-                        input_record.set_input({"index": index, "trace": trace})
             record.set_output({"trace_count": len(snapshot)})
         output.trace_count = len(snapshot)
         output.activity = "Checking prerequisites"
