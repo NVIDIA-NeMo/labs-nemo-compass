@@ -24,6 +24,7 @@ from openinference.instrumentation._spans import OpenInferenceSpan
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import ReadableSpan
 
 from insight_agent.config import RunConfig
 from insight_agent.config import TraceConfig as SourceConfig
@@ -119,15 +120,11 @@ def record_input_metadata(config: RunConfig, loader: TraceLoader, snapshot: Trac
         }
         root.set_attribute("input.value", json.dumps(root_input))
         root.set_attribute("input.mime_type", "application/json")
-        root.set_attribute(
-            "metadata",
-            json.dumps(
-                {
-                    **_execution_metadata(),
-                    **_input_metadata_fields(input_source),
-                }
-            ),
-        )
+        attributes = root.attributes if isinstance(root, ReadableSpan) else {}
+        existing_metadata = (attributes or {}).get("metadata")
+        metadata = json.loads(existing_metadata) if isinstance(existing_metadata, str) else {}
+        metadata.update(_input_metadata_fields(input_source))
+        root.set_attribute("metadata", json.dumps(metadata))
 
 
 def _execution_metadata() -> dict[str, str | bool]:

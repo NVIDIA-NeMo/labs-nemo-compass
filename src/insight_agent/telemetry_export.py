@@ -11,6 +11,16 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import SpanContext
 
+_OPERATION_NAMES = {
+    "nooa.tracing": {"generation": "agent.execute", "context_snapshot": "agent.context"},
+    "openinference.instrumentation.litellm": {
+        "acompletion": "llm.chat_completion",
+        "completion": "llm.chat_completion",
+        "aresponses": "llm.responses",
+        "responses": "llm.responses",
+    },
+}
+
 
 class _ExportSpan(ReadableSpan):
     """Read-only name override; delegate all other fields to the ended SDK span."""
@@ -48,16 +58,7 @@ class _ExportSpan(ReadableSpan):
 def _with_operation_name(span: ReadableSpan) -> ReadableSpan:
     """Name the API layer, rather than suggesting nested SDK calls are extra requests."""
     scope = span.instrumentation_scope.name if span.instrumentation_scope else ""
-    names = {
-        "nooa.tracing": {"generation": "agent.execute", "context_snapshot": "agent.context"},
-        "openinference.instrumentation.litellm": {
-            "acompletion": "llm.chat_completion",
-            "completion": "llm.chat_completion",
-            "aresponses": "llm.responses",
-            "responses": "llm.responses",
-        },
-    }
-    name = names.get(scope, {}).get(span.name)
+    name = _OPERATION_NAMES.get(scope, {}).get(span.name)
     if scope == "nooa.tracing" and span.name == "generation":
         method = (span.attributes or {}).get("agent.method")
         if isinstance(method, str) and method:

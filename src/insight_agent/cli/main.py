@@ -321,7 +321,7 @@ async def _validate_evidence_with_code(
             record.set_output({"supported": decision})
             return decision
 
-    async def validate_result(result: CompassSignalResult) -> CompassSignalResult:
+    async def validate_result(result: CompassSignalResult) -> list[bool | None]:
         validations = []
         for problem in result.problems:
             supporting_traces = tuple(
@@ -331,32 +331,32 @@ async def _validate_evidence_with_code(
 
         async with asyncio.TaskGroup() as group:
             tasks = [group.create_task(validation) for validation in validations]
-        decisions = [task.result() for task in tasks]
-        if summary is not None:
-            for problem, decision in zip(result.problems, decisions, strict=True):
-                destination = (
-                    summary["supported"]
-                    if decision is True
-                    else summary["unsupported"]
-                    if decision is False
-                    else summary["unresolved"]
-                )
-                destination.append(
+        return [task.result() for task in tasks]
+
+    async with asyncio.TaskGroup() as group:
+        tasks = [group.create_task(validate_result(result)) for result in evidence]
+
+    validated = []
+    for result, task in zip(evidence, tasks, strict=True):
+        retained_problems = []
+        for problem, decision in zip(result.problems, task.result(), strict=True):
+            if decision is True:
+                category = "supported"
+            elif decision is False:
+                category = "unsupported"
+            else:
+                category = "unresolved"
+            if summary is not None:
+                summary[category].append(
                     {
                         "signal": result.signal_name.replace("-", "_"),
                         "description": problem.description,
                     }
                 )
-        retained_problems = tuple(
-            problem
-            for problem, decision in zip(result.problems, decisions, strict=True)
-            if decision is not False
-        )
-        return result.model_copy(update={"problems": retained_problems})
-
-    async with asyncio.TaskGroup() as group:
-        tasks = [group.create_task(validate_result(result)) for result in evidence]
-    return [task.result() for task in tasks]
+            if decision is not False:
+                retained_problems.append(problem)
+        validated.append(result.model_copy(update={"problems": tuple(retained_problems)}))
+    return validated
 
 
 async def _rate_confidence_with_code(

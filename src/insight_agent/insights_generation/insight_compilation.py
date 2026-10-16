@@ -125,20 +125,22 @@ class EvidenceCompletion(BaseModel):
                     and bool(self.unresolved_reason and self.unresolved_reason.strip())
                     and not self.checks
                 )
+                status = "skipped" if skipped else "failed"
+                reason = str(error)[:300]
                 record.set_output(
                     {
-                        "status": "skipped" if skipped else "failed",
-                        "reason": str(error)[:300],
+                        "status": status,
+                        "reason": reason,
                         "error_type": None if skipped else type(error).__name__,
                     }
                 )
                 if limitations is not None:
                     limitations.append(
-                        f"Evidence scan {'skipped' if skipped else 'failed'} for {self.insight.name!r}: {str(error)[:300]}. Existing references were retained."
+                        f"Evidence scan {status} for {self.insight.name!r}: {reason}. Existing references were retained."
                     )
                 warnings.warn(
                     f"The evidence scan did not complete for {self.insight.name!r}: "
-                    f"{type(error).__name__}: {str(error)[:300]}. "
+                    f"{type(error).__name__}: {reason}. "
                     "The insight keeps its existing references. The scan added no new references.",
                     stacklevel=2,
                 )
@@ -150,33 +152,31 @@ class EvidenceCompletion(BaseModel):
                     "unknown_count": unknown,
                 }
             )
-            if unknown:
-                if limitations is not None:
-                    limitations.append(
-                        f"Evidence scan incomplete for {self.insight.name!r}: {unknown} of {len(snapshot)} source traces could not be classified; additional supporting traces may exist."
-                    )
-                warnings.warn(
-                    f"Evidence scan incomplete for {self.insight.name!r}: "
-                    f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
-                    "The scan added its matches, but other supporting traces may remain without references.",
-                    stacklevel=2,
+        if unknown:
+            if limitations is not None:
+                limitations.append(
+                    f"Evidence scan incomplete for {self.insight.name!r}: {unknown} of {len(snapshot)} source traces could not be classified; additional supporting traces may exist."
                 )
-            evidence = {item.trace_id: item for item in self.insight.evidence}
-            added_trace = any(item.trace_id not in evidence for item in matches)
-            for item in matches:
-                previous = evidence.get(item.trace_id, item)
-                spans = {span.span_id: span for span in previous.spans}
-                for evidence_span in item.spans:
-                    spans.setdefault(evidence_span.span_id, evidence_span)
-                evidence[item.trace_id] = previous.model_copy(
-                    update={"spans": list(spans.values())}
-                )
-            return self.insight.model_copy(
-                update={
-                    "evidence": list(evidence.values()),
-                    "updated_date": run_timestamp if added_trace else self.insight.updated_date,
-                }
+            warnings.warn(
+                f"Evidence scan incomplete for {self.insight.name!r}: "
+                f"The function could not decide whether {unknown} of {len(snapshot)} traces match. "
+                "The scan added its matches, but other supporting traces may remain without references.",
+                stacklevel=2,
             )
+        evidence = {item.trace_id: item for item in self.insight.evidence}
+        added_trace = any(item.trace_id not in evidence for item in matches)
+        for item in matches:
+            previous = evidence.get(item.trace_id, item)
+            spans = {span.span_id: span for span in previous.spans}
+            for evidence_span in item.spans:
+                spans.setdefault(evidence_span.span_id, evidence_span)
+            evidence[item.trace_id] = previous.model_copy(update={"spans": list(spans.values())})
+        return self.insight.model_copy(
+            update={
+                "evidence": list(evidence.values()),
+                "updated_date": run_timestamp if added_trace else self.insight.updated_date,
+            }
+        )
 
 
 def _validate_completions(
